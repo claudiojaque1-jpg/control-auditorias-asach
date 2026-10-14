@@ -637,7 +637,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL NUEVA COMPENSACIÓN */}
+      {/* MODAL NUEVA COMPENSACIÓN (CON CRÉDITO VISIBLE) */}
       {showModalComp && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -645,16 +645,110 @@ function DashboardApp({ user, onLogout }) {
             <form onSubmit={handleCompSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Auditor</label>
-                <select required value={compData.usuario_id} onChange={e => setCompData({...compData, usuario_id: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500">
+                <select 
+                  required 
+                  value={compData.usuario_id} 
+                  onChange={e => setCompData({...compData, usuario_id: e.target.value})} 
+                  className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500"
+                >
                   <option value="">Seleccione auditor...</option>
-                  {usuariosDB.map(u => (<option key={u.id} value={u.id}>{u.nombre} ({u.cargo})</option>))}
+                  {usuariosDB.map(u => (
+                    <option key={u.id} value={u.id}>{u.nombre} ({u.cargo})</option>
+                  ))}
+                </select>
+
+                {/* Muestra el saldo / crédito de horas del auditor seleccionado */}
+                {compData.usuario_id && (() => {
+                  const uId = Number(compData.usuario_id);
+                  let totalGen = 0;
+                  let totalComp = 0;
+                  
+                  rawRegistros.forEach(r => {
+                    if (Number(r.usuario_id) === uId && r.estado === 'Aprobado') {
+                      totalGen += (r.horas_generadas_minutos || 0);
+                    }
+                  });
+                  
+                  rawCompensaciones.forEach(c => {
+                    if (Number(c.usuario_id) === uId) {
+                      totalComp += (c.horas_compensadas_minutos || 0);
+                    }
+                  });
+
+                  const saldoMinutos = totalGen - totalComp;
+                  const esPositivo = saldoMinutos >= 0;
+
+                  return (
+                    <div className={`mt-2 p-2.5 rounded-lg text-xs font-semibold flex justify-between items-center ${esPositivo ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+                      <span>Crédito disponible para descontar:</span>
+                      <span className="text-sm font-bold">{formatTime(saldoMinutos)} hrs</span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                <input 
+                  type="date" 
+                  required 
+                  value={compData.fecha} 
+                  onChange={e => setCompData({...compData, fecha: e.target.value})} 
+                  className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad de Horas (Ej: 02:30)</label>
+                <input 
+                  type="text" 
+                  placeholder="HH:MM" 
+                  required 
+                  value={compData.horas} 
+                  onChange={e => setCompData({...compData, horas: e.target.value})} 
+                  className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
+                <select 
+                  value={compData.motivo} 
+                  onChange={e => setCompData({...compData, motivo: e.target.value})} 
+                  className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="Salida anticipada">Salida anticipada</option>
+                  <option value="Permiso personal">Permiso personal</option>
+                  <option value="Día administrativo">Día administrativo</option>
+                  <option value="Otro">Otro</option>
                 </select>
               </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label><input type="date" required value={compData.fecha} onChange={e => setCompData({...compData, fecha: e.target.value})} className="w-full border rounded-lg p-2" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Cantidad de Horas (Ej: 02:30)</label><input type="text" placeholder="HH:MM" required value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded-lg p-2" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label><select value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded-lg p-2"><option value="Salida anticipada">Salida anticipada</option><option value="Permiso personal">Permiso personal</option><option value="Día administrativo">Día administrativo</option><option value="Otro">Otro</option></select></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label><textarea rows="2" value={compData.observaciones} onChange={e => setCompData({...compData, observaciones: e.target.value})} className="w-full border rounded-lg p-2"></textarea></div>
-              <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setShowModalComp(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">Aplicar Descuento</button></div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
+                <textarea 
+                  rows="2" 
+                  value={compData.observaciones} 
+                  onChange={e => setCompData({...compData, observaciones: e.target.value})} 
+                  className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500"
+                ></textarea>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button 
+                  type="button" 
+                  onClick={() => setShowModalComp(false)} 
+                  className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50 transition"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition"
+                >
+                  Aplicar Descuento
+                </button>
+              </div>
             </form>
           </div>
         </div>
