@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Trash2, Lock, User, UserPlus, Eye, DownloadCloud, Edit, CheckCircle, Filter, Bell, ChevronRight } from 'lucide-react';
 
 // URL de producción configurada en Railway
@@ -544,311 +544,208 @@ function DashboardApp({ user, onLogout }) {
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <aside className={`w-64 text-white hidden md:flex flex-col ${themeBg} transition-colors duration-300`}>
         <div className={`p-6 border-b ${themeBorder} text-center flex flex-col items-center`}>
-          <div className="bg-white p-2 rounded-full inline-block mb-3 shadow-md"><img src={LOGO_URL} alt="Logo ASACh" className="w-10 h-10 object-contain" /></div>
-          <h2 className="text-lg font-bold leading-tight">AUDITORÍAS ASACh</h2>
-          <p className={`text-xs mt-1 ${themeTextLight}`}>{isAdmin ? 'Panel de Administración' : 'Portal Auditor'}</p>
+          <img src={LOGO_URL} alt="Logo" className="w-14 h-14 mx-auto mb-2 object-contain bg-white rounded-full p-1" />
+          <h2 className="font-bold tracking-wider text-sm">CONTROL AUDITORÍAS</h2>
+          <span className="text-xs bg-black bg-opacity-20 px-2 py-0.5 rounded mt-1">{user.rol}</span>
         </div>
         <nav className="flex-1 p-4 space-y-2">
-          <button onClick={() => setActiveTab('dashboard')} className={menuClass('dashboard')}><LayoutDashboard size={20} /> Dashboard Visual</button>
-          <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><Clock size={20} /> Tablas de Registros</button>
-          <button onClick={() => setActiveTab('compensaciones')} className={menuClass('compensaciones')}><FileText size={20} /> Compensaciones</button>
+          <button onClick={() => setActiveTab('dashboard')} className={menuClass('dashboard')}><LayoutDashboard size={20} /> Dashboard</button>
+          <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><FileText size={20} /> Historial Trabajos</button>
+          <button onClick={() => setActiveTab('compensaciones')} className={menuClass('compensaciones')}><Clock size={20} /> Compensaciones</button>
           {isAdmin && <button onClick={() => setActiveTab('usuarios')} className={menuClass('usuarios')}><Users size={20} /> Usuarios</button>}
         </nav>
-        <div className={`p-4 border-t ${themeBorder}`}><button onClick={onLogout} className={`flex items-center gap-3 p-2 w-full rounded-lg transition ${themeHover}`}><LogOut size={20} /> Cerrar Sesión</button></div>
+        <div className={`p-4 border-t ${themeBorder}`}>
+          <div className="mb-2"><p className="font-medium text-sm truncate">{user.nombre}</p><p className={`text-xs ${themeTextLight} truncate`}>{user.departamento}</p></div>
+          <button onClick={onLogout} className="flex items-center gap-2 text-red-200 hover:text-white transition text-sm w-full pt-2 border-t border-white border-opacity-10"><LogOut size={16} /> Cerrar Sesión</button>
+        </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto relative" onClick={() => setShowNotificationsDropdown(false)}>
-        <header className="bg-white shadow-sm p-4 md:p-6 flex justify-between items-center mb-6 sticky top-0 z-40">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">Hola, {user.nombre.split(' ')[0]}</h1>
-            <p className="text-gray-500 text-sm">Sistema de Control de Auditorías de remesa ASACh</p>
-          </div>
-          
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <header className="bg-white border-b border-gray-200 p-4 flex justify-between items-center shadow-sm">
+          <h1 className="text-xl font-bold text-gray-800 capitalize">{activeTab}</h1>
           <div className="flex items-center gap-4">
-            {/* NOTIFICACIÓN CON CAMPANA Y MENÚ DESPLEGABLE FILTRADO SIN DUPLICADOS */}
-            {isAdmin && (() => {
-                const pendientesUnicas = rawRegistros.filter((r, index, self) => 
-                    r.estado === 'Pendiente' && index === self.findIndex((t) => t.id === r.id)
-                );
-                const count = pendientesUnicas.length;
-                return (
-                    <div className="relative" onClick={e => e.stopPropagation()}>
-                        <button 
-                            onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
-                            className={`p-2.5 rounded-full border transition relative flex items-center justify-center ${
-                                count > 0 
-                                    ? 'bg-amber-50 border-amber-200 text-amber-600 hover:bg-amber-100' 
-                                    : 'bg-gray-50 border-gray-200 text-gray-400'
-                            }`}
-                            title={count > 0 ? `Tienes ${count} solicitud(es) por autorizar` : 'Sin notificaciones pendientes'}
-                        >
-                            <Bell size={20} className={count > 0 ? 'animate-bounce' : ''} />
-                            {count > 0 && (
-                                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center shadow-md animate-pulse">
-                                    {count}
-                                </span>
-                            )}
-                        </button>
-
-                        {/* MENÚ DESPLEGABLE DE NOTIFICACIONES */}
-                        {showNotificationsDropdown && (
-                            <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
-                                <div className={`${themeBg} text-white p-3.5 flex justify-between items-center font-bold text-sm`}>
-                                    <span className="flex items-center gap-2"><Bell size={16}/> Solicitudes por Autorizar</span>
-                                    <span className="bg-yellow-400 text-blue-900 text-xs px-2 py-0.5 rounded-full font-extrabold">{count} nuevas</span>
-                                </div>
-                                <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
-                                    {count === 0 ? (
-                                        <div className="p-6 text-center text-gray-400 text-sm italic">No hay solicitudes pendientes en este momento.</div>
-                                    ) : (
-                                        pendientesUnicas.map(req => (
-                                            <div key={req.id} onClick={() => { setShowNotificationsDropdown(false); setActiveTab('dashboard'); verDetallesRegistro(req.id); }} className="p-3.5 hover:bg-gray-50 transition cursor-pointer flex items-center justify-between group">
-                                                <div className="space-y-1 pr-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs font-bold bg-blue-50 text-blue-800 px-2 py-0.5 rounded">{req.motivo}</span>
-                                                        <span className="text-xs text-gray-400">{req.fecha}</span>
-                                                    </div>
-                                                    <p className="text-xs font-bold text-gray-800">{req.auditor || 'Auditor'}</p>
-                                                    <p className="text-xs text-blue-900 font-semibold">{req.hora_inicio && req.hora_termino ? `⏰ Horario propuesto: ${req.hora_inicio} - ${req.hora_termino}` : '⏰ Horario por definir'}</p>
-                                                    <p className="text-xs text-gray-600 line-clamp-1">{req.actividad}</p>
-                                                </div>
-                                                <div className="text-gray-400 group-hover:text-teal-700 transition">
-                                                    <ChevronRight size={18} />
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                                {count > 0 && (
-                                    <div className="p-2.5 bg-gray-50 border-t text-center">
-                                        <button onClick={() => { setShowNotificationsDropdown(false); setActiveTab('dashboard'); }} className="text-xs font-bold text-teal-800 hover:underline">Ver todas en el panel principal</button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                );
-            })()}
-
-            <button onClick={() => { setEditingId(null); setEditingEstado('Pendiente'); setFormData({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento }); setShowModal(true); }} className="flex items-center gap-2 bg-yellow-400 text-blue-900 px-4 py-2 rounded-lg font-semibold shadow hover:bg-yellow-500">
-                <Plus size={20} /> NUEVA PROPUESTA
-            </button>
+            <button onClick={() => setShowModal(true)} className={`${themeBg} text-white px-4 py-2 rounded-lg font-medium ${themeHover} flex items-center gap-2 transition shadow-sm`}><Plus size={18} /> Nuevo Registro</button>
+            <div className="relative">
+              <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="p-2 text-gray-500 hover:text-gray-700 relative">
+                <Bell size={20} />
+                {rawRegistros.filter(r => r.estado === 'Pendiente').length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>}
+              </button>
+              {showNotificationsDropdown && (
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-3">
+                  <h4 className="font-bold text-sm text-gray-700 mb-2 border-b pb-1">Notificaciones Pendientes</h4>
+                  {rawRegistros.filter(r => r.estado === 'Pendiente').length === 0 ? (
+                    <p className="text-xs text-gray-500 text-center py-4">No hay propuestas pendientes</p>
+                  ) : (
+                    rawRegistros.filter(r => r.estado === 'Pendiente').map(r => (
+                      <div key={r.id} className="text-xs border-b py-2 flex justify-between items-center">
+                        <div>
+                          <p className="font-bold text-gray-800">{r.auditor || 'Auditor'}</p>
+                          <p className="text-gray-500 truncate max-w-[200px]">{r.actividad}</p>
+                        </div>
+                        <button onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }} className="text-blue-600 hover:underline"><ChevronRight size={16}/></button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </header>
-        <div className="px-4 md:px-6 pb-6">{renderContent()}</div>
+
+        <div className="p-6">
+          {renderContent()}
+        </div>
       </main>
 
-      {/* MODAL DETALLES */}
-      {registroDetalle && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
-              <div className="bg-white rounded-xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-                  <div className={`${themeBg} text-white p-4 font-bold flex justify-between items-center`}>
-                      <span className="flex items-center gap-2"><FileText size={18}/> Detalle del Registro #{registroDetalle.id}</span>
-                      <button onClick={() => setRegistroDetalle(null)} className="hover:text-gray-300">✕</button>
-                  </div>
-                  <div className="p-6 overflow-y-auto space-y-6">
-                      <div className="grid grid-cols-2 gap-4 border-b pb-4">
-                          <div><p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Auditor a cargo</p><p className="font-medium text-gray-800">{registroDetalle.auditor}</p><p className="text-sm text-gray-500">{registroDetalle.cargo}</p></div>
-                          <div><p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Estado y Horario Propuesto</p><p className="font-medium text-gray-800">{renderBadgeEstado(registroDetalle.estado)}</p><p className="text-sm text-gray-500">{registroDetalle.hora_inicio ? `${registroDetalle.hora_inicio} a ${registroDetalle.hora_termino} (${formatTime(registroDetalle.horas_generadas_minutos)} hrs)` : 'Horario no especificado'}</p></div>
-                      </div>
-                      <div>
-                          <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2">Actividad Propuesta ({registroDetalle.motivo})</p>
-                          <div className="bg-gray-50 p-4 rounded-lg border text-sm text-gray-700 whitespace-pre-wrap">{registroDetalle.actividad}</div>
-                      </div>
-                      {registroDetalle.intervinientes && registroDetalle.intervinientes.length > 0 && (
-                          <div>
-                              <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-2"><Users size={14}/> Intervinientes</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                  {registroDetalle.intervinientes.map(inv => (
-                                      <div key={inv.id} className="bg-white border rounded p-3 flex flex-col shadow-sm"><span className="font-medium text-sm text-gray-800">{inv.nombre}</span><span className="text-xs text-gray-500">{inv.cargo} • {inv.participacion}</span></div>
-                                  ))}
-                              </div>
-                          </div>
-                      )}
-                      {registroDetalle.evidencias && registroDetalle.evidencias.length > 0 && (
-                          <div>
-                              <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-2"><Paperclip size={14}/> Evidencia Adjunta</p>
-                              <div className="flex flex-col gap-2">
-                                  {registroDetalle.evidencias.map(ev => (
-                                      <a key={ev.id} href={`${API_URL}${ev.archivo_url}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 rounded-lg border transition hover:bg-gray-100 group bg-gray-50 text-gray-800"><div className="p-2 rounded bg-white text-gray-600 shadow-sm"><DownloadCloud size={20}/></div><div className="flex-1 truncate"><p className="text-sm font-medium truncate">{ev.nombre_archivo}</p></div></a>
-                                  ))}
-                              </div>
-                          </div>
-                      )}
-                  </div>
-                  <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
-                      {isAdmin && registroDetalle.estado === 'Pendiente' && (
-                          <>
-                              <button onClick={() => { cambiarEstado(registroDetalle.id, 'Autorizado'); setRegistroDetalle(null); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">Autorizar Actividad</button>
-                              <button onClick={() => { cambiarEstado(registroDetalle.id, 'Rechazado'); setRegistroDetalle(null); }} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-red-700">Rechazar</button>
-                          </>
-                      )}
-                      <button onClick={() => setRegistroDetalle(null)} className="px-5 py-2 border rounded-lg bg-white text-gray-700 hover:bg-gray-100 font-medium shadow-sm">Cerrar Detalle</button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* MODAL CREAR PROPUESTA O EJECUTAR ACTIVIDAD */}
+      {/* MODAL NUEVO / EDITAR REGISTRO */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-2xl overflow-hidden shadow-2xl max-h-[95vh] flex flex-col">
-            <div className={`${themeBg} text-white p-4 font-bold flex justify-between`}>
-                <span>{editingEstado === 'Autorizado' ? 'Completar Ejecución de Actividad' : (editingId ? 'Editar Propuesta' : 'Nueva Actividad Propuesta')}</span>
-                <button onClick={cerrarModalRegistro}>✕</button>
-            </div>
-            <div className="overflow-y-auto p-6 flex-1">
-              <form id="registroForm" onSubmit={handleSubmit} className="space-y-5">
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-sm font-medium mb-1">Fecha Programada</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded p-2" /></div>
-                  <div>
-                      <label className="block text-sm font-medium mb-1">Motivo / Tipo</label>
-                      <select value={formData.motivo} onChange={e => setFormData({...formData, motivo: e.target.value})} className="w-full border rounded p-2">
-                          <option value="Auditoría">Auditoría</option>
-                          <option value="Cambio de Tesorero">Cambio de Tesorero</option>
-                          <option value="Capacitación">Capacitación</option>
-                          <option value="Urgencia">Urgencia</option>
-                      </select>
-                  </div>
-                </div>
-
-                {/* HORARIO PROPUESTO DISPONIBLE DESDE LA CREACIÓN */}
-                <div className="grid grid-cols-2 gap-4 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                  <div>
-                    <label className="block text-sm font-medium text-blue-950 mb-1">Hora Inicio Estimada</label>
-                    <input type="time" required value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded p-2 bg-white" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-blue-950 mb-1">Hora Término Estimada</label>
-                    <input type="time" required value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded p-2 bg-white" />
-                  </div>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium mb-1">Actividad Propuesta / Detalle</label>
-                    <textarea required rows="3" placeholder="Describa la actividad propuesta..." value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded p-2"></textarea>
-                </div>
-
-                {(editingEstado === 'Autorizado' || editingEstado === 'Aprobado' || isAdmin) && (
-                    <div className="border-t pt-4 space-y-4">
-                        <p className="text-xs font-bold text-blue-900 uppercase tracking-wider">Ejecución y Cierre de Actividad</p>
-
-                        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                          <div className="flex justify-between items-center mb-3"><label className="block text-sm font-bold text-gray-700 flex items-center gap-2"><Users size={16}/> Intervinientes</label><button type="button" onClick={agregarInterviniente} className="text-xs bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-100 flex items-center gap-1"><Plus size={14}/> Agregar persona</button></div>
-                          {intervinientes.map((inv, idx) => (
-                            <div key={idx} className="flex gap-2 items-center bg-white p-2 rounded border shadow-sm mb-2">
-                              <input type="text" placeholder="Nombre completo" required value={inv.nombre} onChange={e => actualizarInterviniente(idx, 'nombre', e.target.value)} className="w-1/3 border rounded p-1 text-sm" />
-                              <input type="text" placeholder="Cargo" required value={inv.cargo} onChange={e => actualizarInterviniente(idx, 'cargo', e.target.value)} className="w-1/3 border rounded p-1 text-sm" />
-                              <select value={inv.participacion} onChange={e => actualizarInterviniente(idx, 'participacion', e.target.value)} className="w-1/4 border rounded p-1 text-sm"><option>Participante</option><option>Entrevistado</option><option>Testigo</option></select>
-                              <button type="button" onClick={() => eliminarInterviniente(idx)} className="text-red-500 p-1"><Trash2 size={16}/></button>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="bg-gray-50 p-3 rounded border border-dashed border-gray-300">
-                          <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2"><Paperclip size={16} /> Adjuntar Evidencia</label>
-                          <input type="file" onChange={e => setArchivo(e.target.files[0])} className="w-full text-sm text-gray-500" />
-                        </div>
-                    </div>
-                )}
-              </form>
-            </div>
-            <div className="p-4 border-t bg-gray-50 flex justify-end gap-3"><button type="button" onClick={cerrarModalRegistro} className="px-4 py-2 border rounded text-gray-600 bg-white shadow-sm">Cancelar</button><button type="submit" form="registroForm" className={`px-4 py-2 ${themeBg} text-white rounded font-medium shadow-sm`}>{editingEstado === 'Autorizado' ? 'Guardar y Finalizar' : (editingId ? 'Guardar Cambios' : 'Enviar Propuesta')}</button></div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL COMPENSACIÓN */}
-      {showModalComp && isAdmin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg overflow-hidden shadow-2xl">
-            <div className="bg-green-600 text-white p-4 font-bold flex justify-between"><span>Registrar Compensación</span><button onClick={() => setShowModalComp(false)}>✕</button></div>
-            <form onSubmit={handleCompSubmit} className="p-6 space-y-4">
-              <div className="bg-green-50 p-4 rounded border border-green-200">
-                <label className="block text-sm font-bold text-green-900 mb-2">Asignar descuento a:</label>
-                <select required value={compData.usuario_id} onChange={e => setCompData({...compData, usuario_id: e.target.value})} className="w-full border border-green-300 rounded p-2 bg-white outline-none">
-                    <option value="">-- Elija un usuario --</option>
-                    {usuariosDB.map(u => (<option key={u.id} value={u.id}>{u.nombre} ({u.cargo})</option>))}
-                </select>
-                {compData.usuario_id && (() => {
-                    const uId = Number(compData.usuario_id);
-                    let totalGen = 0, totalComp = 0;
-                    rawRegistros.forEach(r => { if(Number(r.usuario_id) === uId && r.estado === 'Aprobado') totalGen += (r.horas_generadas_minutos || 0); });
-                    rawCompensaciones.forEach(c => { if(Number(c.usuario_id) === uId) totalComp += (c.horas_compensadas_minutos || 0); });
-                    const saldoRealMinutos = totalGen - totalComp;
-
-                    return (
-                        <div className="mt-3 text-sm text-green-800 bg-white p-2 rounded border border-green-100 text-center shadow-sm">
-                          Saldo total disponible: <strong className="text-lg text-green-700">{formatTime(saldoRealMinutos)} hrs</strong>
-                        </div>
-                    );
-                })()}
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">{editingId ? 'Editar / Rellenar Registro' : 'Registrar Nueva Actividad'}</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Departamento</label><input type="text" required value={formData.departamento} onChange={e => setFormData({...formData, departamento: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
               </div>
-              <div className="grid grid-cols-2 gap-4 mt-2">
-                <div><label className="block text-sm font-medium mb-1">Fecha</label><input type="date" required value={compData.fecha} onChange={e => setCompData({...compData, fecha: e.target.value})} className="w-full border rounded p-2" /></div>
-                <div><label className="block text-sm font-medium mb-1">Horas a devolver</label><input type="time" required value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded p-2" /></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Hora Inicio</label><input type="time" required value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Hora Término</label><input type="time" required value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
               </div>
-              <textarea rows="2" placeholder="Observaciones..." value={compData.observaciones} onChange={e => setCompData({...compData, observaciones: e.target.value})} className="w-full border rounded p-2"></textarea>
-              <div className="flex justify-end gap-3 pt-4 border-t"><button type="button" onClick={() => setShowModalComp(false)} className="px-4 py-2 border rounded text-gray-600 shadow-sm">Cancelar</button><button type="submit" className="px-4 py-2 bg-green-600 text-white rounded font-medium shadow-sm">Aprobar y Descontar</button></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label><select value={formData.motivo} onChange={e => setFormData({...formData, motivo: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500"><option value="Auditoría">Auditoría</option><option value="Inventario">Inventario</option><option value="Revisión Documental">Revisión Documental</option><option value="Otro">Otro</option></select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Descripción de la Actividad</label><textarea required rows="3" value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Detalle el trabajo realizado..."></textarea></div>
+              
+              {/* INTERVINIENTES */}
+              <div className="border-t pt-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-bold text-gray-700">Intervinientes / Acompañantes</label>
+                  <button type="button" onClick={agregarInterviniente} className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-lg font-medium hover:bg-blue-100">+ Añadir Interviniente</button>
+                </div>
+                {intervinientes.map((integ, index) => (
+                  <div key={index} className="flex gap-2 items-center mb-2">
+                    <input type="text" placeholder="Nombre" value={integ.nombre} onChange={e => actualizarInterviniente(index, 'nombre', e.target.value)} className="w-1/3 border rounded p-1.5 text-sm" />
+                    <input type="text" placeholder="Cargo" value={integ.cargo} onChange={e => actualizarInterviniente(index, 'cargo', e.target.value)} className="w-1/3 border rounded p-1.5 text-sm" />
+                    <select value={integ.participacion} onChange={e => actualizarInterviniente(index, 'participacion', e.target.value)} className="w-1/4 border rounded p-1.5 text-sm"><option value="Participante">Participante</option><option value="Responsable">Responsable</option></select>
+                    <button type="button" onClick={() => eliminarInterviniente(index)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                  </div>
+                ))}
+              </div>
+
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Adjuntar Evidencia (PDF o Imagen)</label><input type="file" onChange={e => setArchivo(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" /></div>
+              <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={cerrarModalRegistro} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50">Cancelar</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Guardar Registro</button></div>
             </form>
           </div>
         </div>
       )}
-      
-      {/* MODAL USUARIO CON DOBLE CONTRASEÑA Y VALIDACIÓN DE CORREO */}
-      {showModalUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg overflow-hidden shadow-2xl">
-            <div className={`${themeBg} text-white p-4 font-bold flex justify-between`}><span>Crear Nuevo Usuario</span><button onClick={() => setShowModalUser(false)}>✕</button></div>
-            <form onSubmit={handleUserSubmit} className="p-6 space-y-4">
-              {userError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium border border-red-200 text-center">{userError}</div>}
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Nombre Completo</label><input type="text" required value={userData.nombre} onChange={e => setUserData({...userData, nombre: e.target.value})} className="w-full border rounded p-2" /></div>
-                <div><label className="block text-sm font-medium mb-1">Correo (Login)</label><input type="email" required value={userData.email} onChange={e => setUserData({...userData, email: e.target.value})} className="w-full border rounded p-2" placeholder="usuario@asach.cl" /></div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Contraseña</label><input type="password" required value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded p-2" /></div>
-                <div><label className="block text-sm font-medium mb-1">Confirmar Contraseña</label><input type="password" required value={userData.confirmPassword} onChange={e => setUserData({...userData, confirmPassword: e.target.value})} className="w-full border rounded p-2" /></div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Cargo</label><input type="text" required value={userData.cargo} onChange={e => setUserData({...userData, cargo: e.target.value})} className="w-full border rounded p-2" /></div>
-                <div><label className="block text-sm font-medium mb-1">Departamento</label><input type="text" required value={userData.departamento} onChange={e => setUserData({...userData, departamento: e.target.value})} className="w-full border rounded p-2" /></div>
-              </div>
-
+      {/* MODAL NUEVA COMPENSACIÓN */}
+      {showModalComp && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Registrar Compensación (Descuento)</h2>
+            <form onSubmit={handleCompSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Rol en el sistema</label>
-                <select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded p-2">
-                    <option>Auditor</option>
-                    <option>Administrador</option>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Auditor</label>
+                <select required value={compData.usuario_id} onChange={e => setCompData({...compData, usuario_id: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500">
+                  <option value="">Seleccione auditor...</option>
+                  {usuariosDB.map(u => (<option key={u.id} value={u.id}>{u.nombre} ({u.cargo})</option>))}
                 </select>
               </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <button type="button" onClick={() => setShowModalUser(false)} className="px-4 py-2 border rounded shadow-sm bg-white text-gray-700">Cancelar</button>
-                <button type="submit" className={`px-4 py-2 ${themeBg} text-white rounded font-medium shadow-sm`}>Guardar Usuario</button>
-              </div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label><input type="date" required value={compData.fecha} onChange={e => setCompData({...compData, fecha: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Cantidad de Horas (Ej: 02:30)</label><input type="text" placeholder="HH:MM" required value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label><select value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded-lg p-2"><option value="Salida anticipada">Salida anticipada</option><option value="Permiso personal">Permiso personal</option><option value="Día administrativo">Día administrativo</option><option value="Otro">Otro</option></select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label><textarea rows="2" value={compData.observaciones} onChange={e => setCompData({...compData, observaciones: e.target.value})} className="w-full border rounded-lg p-2"></textarea></div>
+              <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setShowModalComp(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">Aplicar Descuento</button></div>
             </form>
           </div>
         </div>
       )}
 
+      {/* MODAL NUEVO USUARIO */}
+      {showModalUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Registrar Nuevo Usuario</h2>
+            {userError && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm font-medium">{userError}</div>}
+            <form onSubmit={handleUserSubmit} className="space-y-4">
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label><input type="text" required value={userData.nombre} onChange={e => setUserData({...userData, nombre: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico (Login)</label><input type="email" required value={userData.email} onChange={e => setUserData({...userData, email: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Contraseña Temporal</label><input type="password" required value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Contraseña</label><input type="password" required value={userData.confirmPassword} onChange={e => setUserData({...userData, confirmPassword: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Cargo</label><input type="text" required value={userData.cargo} onChange={e => setUserData({...userData, cargo: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Departamento</label><input type="text" required value={userData.departamento} onChange={e => setUserData({...userData, departamento: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              </div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Rol</label><select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded-lg p-2"><option value="Auditor">Auditor</option><option value="Administrador">Administrador</option></select></div>
+              <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setShowModalUser(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-teal-800 text-white rounded-lg hover:bg-teal-900 font-medium">Crear Usuario</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETALLES DE REGISTRO */}
+      {registroDetalle && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Detalle del Registro</h2>
+            <div className="space-y-3 text-sm">
+              <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
+              <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
+              <p><strong>Horario:</strong> {registroDetalle.hora_inicio} a {registroDetalle.hora_termino} ({formatTime(registroDetalle.horas_generadas_minutos)})</p>
+              <p><strong>Motivo:</strong> {registroDetalle.motivo}</p>
+              <p><strong>Actividad:</strong> {registroDetalle.actividad}</p>
+              {registroDetalle.intervinientes && registroDetalle.intervinientes.length > 0 && (
+                <div>
+                  <strong>Intervinientes:</strong>
+                  <ul className="list-disc pl-5 mt-1">
+                    {registroDetalle.intervinientes.map((i, idx) => (
+                      <li key={idx}>{i.nombre} ({i.cargo}) - {i.participacion}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {registroDetalle.evidencia_url && (
+                <div className="pt-2">
+                  <a href={`${API_URL}${registroDetalle.evidencia_url}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-medium hover:bg-blue-100">
+                    <DownloadCloud size={18} /> Ver Archivo Adjunto (Evidencia)
+                  </a>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end pt-6"><button onClick={() => setRegistroDetalle(null)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cerrar</button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function App() {
   const [user, setUser] = useState(null);
-  useEffect(() => { const saved = localStorage.getItem('user'); if (saved) setUser(JSON.parse(saved)); }, []);
-  const handleLogout = () => { localStorage.removeItem('token'); localStorage.removeItem('user'); setUser(null); };
+
+  useEffect(() => {
+    const saved = localStorage.getItem('user');
+    if (saved) {
+      try {
+        setUser(JSON.parse(saved));
+      } catch (e) {
+        console.error("Error al parsear sesión", e);
+      }
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+  };
+
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
-        <Route path="/login" element={!user ? <LoginScreen onLogin={setUser} /> : <Navigate to="/" />} />
-        <Route path="/" element={user ? <DashboardApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
+        <Route path="/login" element={!user ? <LoginScreen onLogin={setUser} /> : <Navigate to="/" replace />} />
+        <Route path="/" element={user ? <DashboardApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
