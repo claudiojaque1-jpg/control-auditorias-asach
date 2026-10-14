@@ -1,7 +1,7 @@
 # App Banco de Horas y Auditorías (V1.0 - Alpha)
 
 Este es el proyecto inicial generado basado en tus requerimientos.
-Incluye el Backend (Node.js + Express + SQLite) y el Frontend (React + Vite + TailwindCSS).
+Incluye el Backend (Node.js + Express + PostgreSQL) y el Frontend (React + Vite + TailwindCSS).
 
 ## Requisitos previos
 - Node.js instalado (v16+)
