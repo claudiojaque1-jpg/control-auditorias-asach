@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Trash2, Lock, User, UserPlus, Eye, DownloadCloud, Edit, CheckCircle, Filter, Bell, ChevronRight } from 'lucide-react';
 
+// URL de producción configurada en Railway
+const API_URL = "https://control-auditorias-asach-production.up.railway.app";
+
 const formatTime = (mins) => {
   if (mins === undefined || mins === null || isNaN(mins)) return "00:00";
   const isNegative = mins < 0;
@@ -21,7 +24,7 @@ function LoginScreen({ onLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://localhost:3001/api/login', {
+      const res = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -35,7 +38,7 @@ function LoginScreen({ onLogin }) {
         setError(data.error);
       }
     } catch (err) {
-      setError('Error de conexión con el servidor');
+      setError('Error de conexión con el servidor en la nube.');
     }
   };
 
@@ -121,15 +124,15 @@ function DashboardApp({ user, onLogout }) {
   const fetchData = async () => {
     try {
       if (isAdmin) {
-        const resUsers = await fetch('http://localhost:3001/api/usuarios');
+        const resUsers = await fetch(`${API_URL}/api/usuarios`);
         if(resUsers.ok) setUsuariosDB(await resUsers.json());
       }
 
-      const resEst = await fetch(`http://localhost:3001/api/estadisticas/completas${queryParams}`);
+      const resEst = await fetch(`${API_URL}/api/estadisticas/completas${queryParams}`);
       if(resEst.ok) {
         const est = await resEst.json();
         
-        const resRegs = await fetch(`http://localhost:3001/api/registros/ultimos${queryParams}`);
+        const resRegs = await fetch(`${API_URL}/api/registros/ultimos${queryParams}`);
         const regsConEvidencia = await resRegs.json();
 
         setRawRegistros(regsConEvidencia || est.registrosCompletos || []);
@@ -196,7 +199,7 @@ function DashboardApp({ user, onLogout }) {
 
   const verDetallesRegistro = async (id) => {
     try {
-        const res = await fetch(`http://localhost:3001/api/registros/${id}`);
+        const res = await fetch(`${API_URL}/api/registros/${id}`);
         if(res.ok) setRegistroDetalle(await res.json());
     } catch(err) { alert("⚠️ Error de conexión."); }
   };
@@ -206,7 +209,7 @@ function DashboardApp({ user, onLogout }) {
       setEditingEstado(r.estado);
       setFormData({ fecha: r.fecha, hora_inicio: r.hora_inicio || '', hora_termino: r.hora_termino || '', motivo: r.motivo, actividad: r.actividad, departamento: r.departamento || user.departamento });
       try {
-          const res = await fetch(`http://localhost:3001/api/registros/${r.id}`);
+          const res = await fetch(`${API_URL}/api/registros/${r.id}`);
           if(res.ok) {
               const data = await res.json();
               setIntervinientes(data.intervinientes || []);
@@ -216,7 +219,7 @@ function DashboardApp({ user, onLogout }) {
   };
 
   const cambiarEstado = async (id, nuevoEstado) => {
-      await fetch(`http://localhost:3001/api/registros/${id}/estado`, {
+      await fetch(`${API_URL}/api/registros/${id}/estado`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado: nuevoEstado })
       });
       fetchData();
@@ -249,9 +252,9 @@ function DashboardApp({ user, onLogout }) {
     let regId = editingId;
 
     if (editingId) {
-        await fetch(`http://localhost:3001/api/registros/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        await fetch(`${API_URL}/api/registros/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     } else {
-        const resReg = await fetch('http://localhost:3001/api/registros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const resReg = await fetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const dataReg = await resReg.json();
         regId = dataReg.id;
     }
@@ -260,7 +263,7 @@ function DashboardApp({ user, onLogout }) {
       const formDataFile = new FormData();
       formDataFile.append('archivo', archivo);
       formDataFile.append('registro_id', regId);
-      await fetch('http://localhost:3001/api/evidencias', { method: 'POST', body: formDataFile });
+      await fetch(`${API_URL}/api/evidencias`, { method: 'POST', body: formDataFile });
     }
     
     cerrarModalRegistro();
@@ -286,7 +289,7 @@ function DashboardApp({ user, onLogout }) {
 
     if (totalMinutos > saldoRealMinutos) return alert(`⚠️ Las horas a descontar superan el saldo pendiente de este auditor (${formatTime(saldoRealMinutos)} hrs disponibles).`);
     
-    await fetch('http://localhost:3001/api/compensaciones', { 
+    await fetch(`${API_URL}/api/compensaciones`, { 
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...compData, horas_compensadas_minutos: totalMinutos }) 
     });
     
@@ -303,7 +306,7 @@ function DashboardApp({ user, onLogout }) {
     }
 
     try {
-        const res = await fetch('http://localhost:3001/api/usuarios', { 
+        const res = await fetch(`${API_URL}/api/usuarios`, { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' }, 
             body: JSON.stringify({
@@ -667,7 +670,7 @@ function DashboardApp({ user, onLogout }) {
                               <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-2"><Paperclip size={14}/> Evidencia Adjunta</p>
                               <div className="flex flex-col gap-2">
                                   {registroDetalle.evidencias.map(ev => (
-                                      <a key={ev.id} href={`http://localhost:3001${ev.archivo_url}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 rounded-lg border transition hover:bg-gray-100 group bg-gray-50 text-gray-800"><div className="p-2 rounded bg-white text-gray-600 shadow-sm"><DownloadCloud size={20}/></div><div className="flex-1 truncate"><p className="text-sm font-medium truncate">{ev.nombre_archivo}</p></div></a>
+                                      <a key={ev.id} href={`${API_URL}${ev.archivo_url}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 rounded-lg border transition hover:bg-gray-100 group bg-gray-50 text-gray-800"><div className="p-2 rounded bg-white text-gray-600 shadow-sm"><DownloadCloud size={20}/></div><div className="flex-1 truncate"><p className="text-sm font-medium truncate">{ev.nombre_archivo}</p></div></a>
                                   ))}
                               </div>
                           </div>
