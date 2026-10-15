@@ -563,64 +563,79 @@ function DashboardApp({ user, onLogout }) {
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <header className="bg-white border-b border-gray-200 p-4 flex justify-between items-center shadow-sm">
           <h1 className="text-xl font-bold text-gray-800 capitalize">{activeTab}</h1>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             
-            {/* NOTIFICACIONES UBICADAS A LA IZQUIERDA DEL BOTÓN NUEVO REGISTRO */}
+            {/* BOTÓN DE NOTIFICACIONES */}
             <div className="relative">
               <button 
                 onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} 
                 className="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition relative flex items-center justify-center shadow-sm"
-                title="Notificaciones Pendientes"
+                title="Solicitudes por Autorizar"
               >
                 <Bell size={22} className="text-gray-700" />
                 {rawRegistros.filter(r => r.estado === 'Pendiente').length > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-5 w-5 bg-red-600 text-white text-[10px] font-extrabold items-center justify-center border-2 border-white shadow">
-                      {rawRegistros.filter(r => r.estado === 'Pendiente').length}
-                    </span>
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-extrabold h-5 w-5 rounded-full flex items-center justify-center border-2 border-white shadow">
+                    {rawRegistros.filter(r => r.estado === 'Pendiente').length}
                   </span>
                 )}
               </button>
 
-              {/* MENÚ DESPLEGABLE CON ESTILO Y FECHAS EN ROJO */}
+              {/* MENÚ RESTAURADO SEGÚN EL DISEÑO DE LA SEGUNDA IMAGEN */}
               {showNotificationsDropdown && (
-                <div className="absolute right-0 md:left-0 md:right-auto mt-2 w-80 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                  <div className="bg-gradient-to-r from-red-500 to-red-600 p-3 text-white flex justify-between items-center">
+                <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                  
+                  {/* Encabezado Verde Azulado con Badge Amarillo */}
+                  <div className="bg-teal-800 p-3.5 text-white flex justify-between items-center">
                     <span className="font-bold text-sm flex items-center gap-2">
-                      <Bell size={16} /> Notificaciones Pendientes
+                      <Bell size={18} /> Solicitudes por Autorizar
                     </span>
-                    <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full font-semibold">
-                      {rawRegistros.filter(r => r.estado === 'Pendiente').length}
+                    <span className="text-xs bg-yellow-400 text-teal-950 px-2.5 py-1 rounded-full font-extrabold shadow-sm">
+                      {rawRegistros.filter(r => r.estado === 'Pendiente').length} nuevas
                     </span>
                   </div>
 
-                  <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                  {/* Lista de Solicitudes */}
+                  <div className="max-h-80 overflow-y-auto divide-y divide-gray-100 p-2">
                     {rawRegistros.filter(r => r.estado === 'Pendiente').length === 0 ? (
-                      <p className="text-xs text-gray-400 text-center py-6 font-medium">No hay propuestas pendientes por revisar</p>
+                      <p className="text-xs text-gray-400 text-center py-6 font-medium">No hay solicitudes pendientes por autorizar</p>
                     ) : (
                       rawRegistros.filter(r => r.estado === 'Pendiente').map(r => (
-                        <div key={r.id} className="p-3 hover:bg-red-50/50 transition flex justify-between items-center gap-2">
-                          <div className="space-y-0.5 min-w-0 flex-1">
-                            <div className="flex items-center justify-between">
-                              <p className="font-bold text-xs text-gray-900 truncate">{r.auditor || 'Auditor'}</p>
-                              <span className="text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
-                                {r.fecha}
+                        <div 
+                          key={r.id} 
+                          onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }}
+                          className="p-3 hover:bg-gray-50 rounded-xl transition cursor-pointer flex justify-between items-center gap-3"
+                        >
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-md">
+                                {r.motivo || 'Auditoría'}
                               </span>
+                              <span className="text-xs text-gray-400 font-medium">{r.fecha}</span>
                             </div>
-                            <p className="text-xs text-gray-600 truncate">{r.actividad}</p>
+                            <p className="font-bold text-sm text-gray-900 truncate">{r.auditor || 'Auditor'}</p>
+                            {r.hora_inicio && r.hora_termino && (
+                              <p className="text-xs font-semibold text-blue-900 flex items-center gap-1">
+                                ⏰ Horario propuesto: {r.hora_inicio} - {r.hora_termino}
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-500 truncate">{r.actividad}</p>
                           </div>
-                          <button 
-                            onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }} 
-                            className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition"
-                            title="Ir al Registro"
-                          >
-                            <ChevronRight size={16}/>
-                          </button>
+                          <ChevronRight size={18} className="text-gray-400 flex-shrink-0" />
                         </div>
                       ))
                     )}
                   </div>
+
+                  {/* Pie del Desplegable */}
+                  <div className="bg-gray-50 p-3 text-center border-t border-gray-100">
+                    <button 
+                      onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }}
+                      className="text-xs font-bold text-teal-800 hover:text-teal-950 transition"
+                    >
+                      Ver todas en el panel principal
+                    </button>
+                  </div>
+
                 </div>
               )}
             </div>
