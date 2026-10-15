@@ -633,13 +633,15 @@ function DashboardApp({ user, onLogout }) {
               )}
             </div>
 
-            {/* BOTÓN NUEVO REGISTRO */}
-            <button 
-              onClick={() => setShowModal(true)} 
-              className={`${themeBg} text-white px-4 py-2.5 rounded-xl font-medium ${themeHover} flex items-center gap-2 transition shadow-md hover:shadow-lg`}
-            >
-              <Plus size={18} /> Nuevo Registro
-            </button>
+            {/* BOTÓN NUEVO REGISTRO (SOLO VISIBLE EN EL DASHBOARD) */}
+            {activeTab === 'dashboard' && (
+              <button 
+                onClick={() => setShowModal(true)} 
+                className={`${themeBg} text-white px-4 py-2.5 rounded-xl font-medium ${themeHover} flex items-center gap-2 transition shadow-md hover:shadow-lg`}
+              >
+                <Plus size={18} /> Nuevo Registro
+              </button>
+            )}
 
           </div>
         </header>
@@ -649,7 +651,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       </main>
 
-      {/* MODAL NUEVO / EDITAR REGISTRO (SIN OPCIÓN DE ADJUNTAR ARCHIVO) */}
+      {/* MODAL NUEVO / EDITAR REGISTRO */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
