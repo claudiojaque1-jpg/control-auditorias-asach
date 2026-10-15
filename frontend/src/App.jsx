@@ -222,6 +222,7 @@ function DashboardApp({ user, onLogout }) {
       await fetch(`${API_URL}/api/registros/${id}/estado`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado: nuevoEstado })
       });
+      setRegistroDetalle(null);
       fetchData();
   };
 
@@ -580,7 +581,7 @@ function DashboardApp({ user, onLogout }) {
                 )}
               </button>
 
-              {/* MENÚ RESTAURADO SEGÚN EL DISEÑO DE LA SEGUNDA IMAGEN */}
+              {/* MENÚ DESPLEGABLE DE NOTIFICACIONES */}
               {showNotificationsDropdown && (
                 <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden">
                   
@@ -602,7 +603,10 @@ function DashboardApp({ user, onLogout }) {
                       rawRegistros.filter(r => r.estado === 'Pendiente').map(r => (
                         <div 
                           key={r.id} 
-                          onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }}
+                          onClick={() => { 
+                            verDetallesRegistro(r.id); 
+                            setShowNotificationsDropdown(false); 
+                          }}
                           className="p-3 hover:bg-gray-50 rounded-xl transition cursor-pointer flex justify-between items-center gap-3"
                         >
                           <div className="space-y-1 min-w-0 flex-1">
@@ -807,17 +811,22 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL DETALLES DE REGISTRO */}
+      {/* MODAL DETALLES DE REGISTRO / AUTORIZAR - RECHAZAR */}
       {registroDetalle && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Detalle del Registro</h2>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h2 className="text-xl font-bold text-gray-800">Detalle de la Solicitud</h2>
+              {renderBadgeEstado(registroDetalle.estado)}
+            </div>
+
             <div className="space-y-3 text-sm">
               <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
               <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
-              <p><strong>Horario:</strong> {registroDetalle.hora_inicio} a {registroDetalle.hora_termino} ({formatTime(registroDetalle.horas_generadas_minutos)})</p>
+              <p><strong>Horario Propuesto:</strong> {registroDetalle.hora_inicio && registroDetalle.hora_termino ? `${registroDetalle.hora_inicio} a ${registroDetalle.hora_termino}` : 'Por definir'}</p>
               <p><strong>Motivo:</strong> {registroDetalle.motivo}</p>
               <p><strong>Actividad:</strong> {registroDetalle.actividad}</p>
+              
               {registroDetalle.intervinientes && registroDetalle.intervinientes.length > 0 && (
                 <div>
                   <strong>Intervinientes:</strong>
@@ -828,6 +837,7 @@ function DashboardApp({ user, onLogout }) {
                   </ul>
                 </div>
               )}
+
               {registroDetalle.evidencia_url && (
                 <div className="pt-2">
                   <a href={`${API_URL}${registroDetalle.evidencia_url}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-medium hover:bg-blue-100">
@@ -836,7 +846,33 @@ function DashboardApp({ user, onLogout }) {
                 </div>
               )}
             </div>
-            <div className="flex justify-end pt-6"><button onClick={() => setRegistroDetalle(null)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cerrar</button></div>
+
+            <div className="flex justify-between items-center pt-4 border-t">
+              <div>
+                {isAdmin && registroDetalle.estado === 'Pendiente' && (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => cambiarEstado(registroDetalle.id, 'Autorizado')} 
+                      className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition text-sm"
+                    >
+                      Autorizar Solicitud
+                    </button>
+                    <button 
+                      onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')} 
+                      className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition text-sm"
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={() => setRegistroDetalle(null)} 
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300 transition text-sm"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}
