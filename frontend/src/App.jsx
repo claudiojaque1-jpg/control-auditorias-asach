@@ -564,31 +564,75 @@ function DashboardApp({ user, onLogout }) {
         <header className="bg-white border-b border-gray-200 p-4 flex justify-between items-center shadow-sm">
           <h1 className="text-xl font-bold text-gray-800 capitalize">{activeTab}</h1>
           <div className="flex items-center gap-4">
-            <button onClick={() => setShowModal(true)} className={`${themeBg} text-white px-4 py-2 rounded-lg font-medium ${themeHover} flex items-center gap-2 transition shadow-sm`}><Plus size={18} /> Nuevo Registro</button>
+            
+            {/* NOTIFICACIONES UBICADAS A LA IZQUIERDA DEL BOTÓN NUEVO REGISTRO */}
             <div className="relative">
-              <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="p-2 text-gray-500 hover:text-gray-700 relative">
-                <Bell size={20} />
-                {rawRegistros.filter(r => r.estado === 'Pendiente').length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>}
+              <button 
+                onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} 
+                className="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition relative flex items-center justify-center shadow-sm"
+                title="Notificaciones Pendientes"
+              >
+                <Bell size={22} className="text-gray-700" />
+                {rawRegistros.filter(r => r.estado === 'Pendiente').length > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-5 w-5 bg-red-600 text-white text-[10px] font-extrabold items-center justify-center border-2 border-white shadow">
+                      {rawRegistros.filter(r => r.estado === 'Pendiente').length}
+                    </span>
+                  </span>
+                )}
               </button>
+
+              {/* MENÚ DESPLEGABLE CON ESTILO Y FECHAS EN ROJO */}
               {showNotificationsDropdown && (
-                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-3">
-                  <h4 className="font-bold text-sm text-gray-700 mb-2 border-b pb-1">Notificaciones Pendientes</h4>
-                  {rawRegistros.filter(r => r.estado === 'Pendiente').length === 0 ? (
-                    <p className="text-xs text-gray-500 text-center py-4">No hay propuestas pendientes</p>
-                  ) : (
-                    rawRegistros.filter(r => r.estado === 'Pendiente').map(r => (
-                      <div key={r.id} className="text-xs border-b py-2 flex justify-between items-center">
-                        <div>
-                          <p className="font-bold text-gray-800">{r.auditor || 'Auditor'}</p>
-                          <p className="text-gray-500 truncate max-w-[200px]">{r.actividad}</p>
+                <div className="absolute right-0 md:left-0 md:right-auto mt-2 w-80 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                  <div className="bg-gradient-to-r from-red-500 to-red-600 p-3 text-white flex justify-between items-center">
+                    <span className="font-bold text-sm flex items-center gap-2">
+                      <Bell size={16} /> Notificaciones Pendientes
+                    </span>
+                    <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full font-semibold">
+                      {rawRegistros.filter(r => r.estado === 'Pendiente').length}
+                    </span>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                    {rawRegistros.filter(r => r.estado === 'Pendiente').length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-6 font-medium">No hay propuestas pendientes por revisar</p>
+                    ) : (
+                      rawRegistros.filter(r => r.estado === 'Pendiente').map(r => (
+                        <div key={r.id} className="p-3 hover:bg-red-50/50 transition flex justify-between items-center gap-2">
+                          <div className="space-y-0.5 min-w-0 flex-1">
+                            <div className="flex items-center justify-between">
+                              <p className="font-bold text-xs text-gray-900 truncate">{r.auditor || 'Auditor'}</p>
+                              <span className="text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
+                                {r.fecha}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-600 truncate">{r.actividad}</p>
+                          </div>
+                          <button 
+                            onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }} 
+                            className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition"
+                            title="Ir al Registro"
+                          >
+                            <ChevronRight size={16}/>
+                          </button>
                         </div>
-                        <button onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }} className="text-blue-600 hover:underline"><ChevronRight size={16}/></button>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
             </div>
+
+            {/* BOTÓN NUEVO REGISTRO */}
+            <button 
+              onClick={() => setShowModal(true)} 
+              className={`${themeBg} text-white px-4 py-2.5 rounded-xl font-medium ${themeHover} flex items-center gap-2 transition shadow-md hover:shadow-lg`}
+            >
+              <Plus size={18} /> Nuevo Registro
+            </button>
+
           </div>
         </header>
 
