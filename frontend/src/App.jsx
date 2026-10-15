@@ -476,4 +476,342 @@ function DashboardApp({ user, onLogout }) {
                         <td className="p-4 flex justify-center gap-2">
                             <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600 transition" title="Ver Detalle"><Eye size={18} /></button>
                             {(isAdmin || r.estado === 'Autorizado' || r.estado === 'Pendiente') && (
-                                <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text
+                                <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar / Rellenar"><Edit size={18} /></button>
+                            )}
+                            {isAdmin && r.estado === 'Pendiente' && (
+                                <>
+                                    <button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 hover:text-blue-800 transition font-medium text-xs bg-blue-50 px-2 py-1 rounded border border-blue-200">Autorizar</button>
+                                    <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 hover:text-red-800 transition font-medium text-xs bg-red-50 px-2 py-1 rounded border border-red-200">Rechazar</button>
+                                </>
+                            )}
+                            {isAdmin && r.estado === 'Autorizado' && r.horas_generadas_minutos > 0 && (
+                                <button onClick={() => cambiarEstado(r.id, 'Aprobado')} className="text-green-600 hover:text-green-800 transition"><CheckCircle size={18} /></button>
+                            )}
+                        </td>
+                        </tr>
+                    ))}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+        );
+    }
+
+    if (activeTab === 'compensaciones') {
+      return (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <div><h2 className="text-lg font-bold text-gray-800">Historial de Compensaciones</h2><p className="text-sm text-gray-500">Visualiza los descuentos aplicados</p></div>
+            {isAdmin && <button onClick={() => setShowModalComp(true)} className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 flex gap-2"><Plus size={18} /> Registrar Compensación</button>}
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <table className="w-full text-left border-collapse">
+              <thead><tr className="bg-white border-b text-sm text-gray-500"><th className="p-4">Fecha</th>{isAdmin && <th className="p-4">Auditor</th>}<th className="p-4">Motivo</th><th className="p-4">Horas</th></tr></thead>
+              <tbody>
+                {compensaciones.length === 0 ? (<tr><td colSpan="4" className="p-4 text-center text-gray-500">No hay compensaciones</td></tr>) : compensaciones.map(c => (
+                  <tr key={c.id} className="border-b hover:bg-gray-50"><td className="p-4">{c.fecha}</td>{isAdmin && <td className="p-4 font-medium">{c.auditor}</td>}<td className="p-4 text-sm">{c.motivo}</td><td className="p-4 font-bold text-red-600">-{formatTime(c.horas_compensadas_minutos).replace('-', '')}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeTab === 'usuarios' && isAdmin) {
+      return (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <div><h2 className="text-lg font-bold text-gray-800">Administración de Usuarios</h2><p className="text-sm text-gray-500">Gestiona los accesos a la plataforma</p></div>
+            <button onClick={() => { setUserError(''); setShowModalUser(true); }} className={`${themeBg} text-white px-4 py-2 rounded-lg font-medium ${themeHover} flex gap-2 transition`}><UserPlus size={18} /> Nuevo Usuario</button>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <table className="w-full text-left border-collapse">
+              <thead><tr className="bg-white border-b text-sm text-gray-500"><th className="p-4">Nombre</th><th className="p-4">Correo (Login)</th><th className="p-4">Cargo / Depto</th><th className="p-4">Rol</th></tr></thead>
+              <tbody>
+                {usuariosDB.map(u => (
+                  <tr key={u.id} className="border-b hover:bg-gray-50"><td className="p-4 font-medium">{u.nombre}</td><td className="p-4 text-gray-600">{u.email}</td><td className="p-4 text-sm">{u.cargo} - {u.departamento}</td><td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-medium ${u.rol === 'Administrador' ? 'bg-teal-100 text-teal-800' : 'bg-gray-100 text-gray-800'}`}>{u.rol}</span></td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      <aside className={`w-64 text-white hidden md:flex flex-col ${themeBg} transition-colors duration-300`}>
+        <div className={`p-6 border-b ${themeBorder} text-center flex flex-col items-center`}>
+          <img src={LOGO_URL} alt="Logo" className="w-14 h-14 mx-auto mb-2 object-contain bg-white rounded-full p-1" />
+          <h2 className="font-bold tracking-wider text-sm">CONTROL AUDITORÍAS</h2>
+          <span className="text-xs bg-black bg-opacity-20 px-2 py-0.5 rounded mt-1">{user.rol}</span>
+        </div>
+        <nav className="flex-1 p-4 space-y-2">
+          <button onClick={() => setActiveTab('dashboard')} className={menuClass('dashboard')}><LayoutDashboard size={20} /> Dashboard</button>
+          <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><FileText size={20} /> Historial Trabajos</button>
+          <button onClick={() => setActiveTab('compensaciones')} className={menuClass('compensaciones')}><Clock size={20} /> Compensaciones</button>
+          {isAdmin && <button onClick={() => setActiveTab('usuarios')} className={menuClass('usuarios')}><Users size={20} /> Usuarios</button>}
+        </nav>
+        <div className={`p-4 border-t ${themeBorder}`}>
+          <div className="mb-2"><p className="font-medium text-sm truncate">{user.nombre}</p><p className={`text-xs ${themeTextLight} truncate`}>{user.departamento}</p></div>
+          <button onClick={onLogout} className="flex items-center gap-2 text-red-200 hover:text-white transition text-sm w-full pt-2 border-t border-white border-opacity-10"><LogOut size={16} /> Cerrar Sesión</button>
+        </div>
+      </aside>
+
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <header className="bg-white border-b border-gray-200 p-4 flex justify-between items-center shadow-sm">
+          <h1 className="text-xl font-bold text-gray-800 capitalize">{activeTab}</h1>
+          <div className="flex items-center gap-4">
+            <button onClick={() => setShowModal(true)} className={`${themeBg} text-white px-4 py-2 rounded-lg font-medium ${themeHover} flex items-center gap-2 transition shadow-sm`}><Plus size={18} /> Nuevo Registro</button>
+            <div className="relative">
+              <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="p-2 text-gray-500 hover:text-gray-700 relative">
+                <Bell size={20} />
+                {rawRegistros.filter(r => r.estado === 'Pendiente').length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>}
+              </button>
+              {showNotificationsDropdown && (
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-3">
+                  <h4 className="font-bold text-sm text-gray-700 mb-2 border-b pb-1">Notificaciones Pendientes</h4>
+                  {rawRegistros.filter(r => r.estado === 'Pendiente').length === 0 ? (
+                    <p className="text-xs text-gray-500 text-center py-4">No hay propuestas pendientes</p>
+                  ) : (
+                    rawRegistros.filter(r => r.estado === 'Pendiente').map(r => (
+                      <div key={r.id} className="text-xs border-b py-2 flex justify-between items-center">
+                        <div>
+                          <p className="font-bold text-gray-800">{r.auditor || 'Auditor'}</p>
+                          <p className="text-gray-500 truncate max-w-[200px]">{r.actividad}</p>
+                        </div>
+                        <button onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }} className="text-blue-600 hover:underline"><ChevronRight size={16}/></button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <div className="p-6">
+          {renderContent()}
+        </div>
+      </main>
+
+      {/* MODAL NUEVO / EDITAR REGISTRO */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">{editingId ? 'Editar / Rellenar Registro' : 'Registrar Nueva Actividad'}</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Departamento</label><input type="text" required value={formData.departamento} onChange={e => setFormData({...formData, departamento: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Hora Inicio</label><input type="time" required value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Hora Término</label><input type="time" required value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" /></div>
+              </div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label><select value={formData.motivo} onChange={e => setFormData({...formData, motivo: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500"><option value="Auditoría">Auditoría</option><option value="Inventario">Inventario</option><option value="Revisión Documental">Revisión Documental</option><option value="Otro">Otro</option></select></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Descripción de la Actividad</label><textarea required rows="3" value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Detalle el trabajo realizado..."></textarea></div>
+              
+              {/* INTERVINIENTES */}
+              <div className="border-t pt-4">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-bold text-gray-700">Intervinientes / Acompañantes</label>
+                  <button type="button" onClick={agregarInterviniente} className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-lg font-medium hover:bg-blue-100">+ Añadir Interviniente</button>
+                </div>
+                {intervinientes.map((integ, index) => (
+                  <div key={index} className="flex gap-2 items-center mb-2">
+                    <input type="text" placeholder="Nombre" value={integ.nombre} onChange={e => actualizarInterviniente(index, 'nombre', e.target.value)} className="w-1/3 border rounded p-1.5 text-sm" />
+                    <input type="text" placeholder="Cargo" value={integ.cargo} onChange={e => actualizarInterviniente(index, 'cargo', e.target.value)} className="w-1/3 border rounded p-1.5 text-sm" />
+                    <select value={integ.participacion} onChange={e => actualizarInterviniente(index, 'participacion', e.target.value)} className="w-1/4 border rounded p-1.5 text-sm"><option value="Participante">Participante</option><option value="Responsable">Responsable</option></select>
+                    <button type="button" onClick={() => eliminarInterviniente(index)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                  </div>
+                ))}
+              </div>
+
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Adjuntar Evidencia (PDF o Imagen)</label><input type="file" onChange={e => setArchivo(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" /></div>
+              <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={cerrarModalRegistro} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50">Cancelar</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Guardar Registro</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NUEVA COMPENSACIÓN */}
+      {showModalComp && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b">
+              <h2 className="text-xl font-bold text-gray-800">Registrar Compensación</h2>
+              <button onClick={() => setShowModalComp(false)} className="text-gray-400 hover:text-gray-600 transition font-bold text-lg">✕</button>
+            </div>
+
+            <form onSubmit={handleCompSubmit} className="space-y-4">
+              <div className="bg-green-50/60 p-3 rounded-xl border border-green-200 space-y-2">
+                <label className="block text-sm font-bold text-green-900">Asignar descuento a:</label>
+                <select 
+                  required 
+                  value={compData.usuario_id} 
+                  onChange={e => setCompData({...compData, usuario_id: e.target.value})} 
+                  className="w-full border rounded-lg p-2 outline-none bg-white focus:ring-2 focus:ring-green-500 text-sm"
+                >
+                  <option value="">Seleccione auditor...</option>
+                  {usuariosDB.map(u => (
+                    <option key={u.id} value={u.id}>{u.nombre} ({u.cargo})</option>
+                  ))}
+                </select>
+
+                {compData.usuario_id && (() => {
+                  const uId = Number(compData.usuario_id);
+                  let totalGen = 0;
+                  let totalComp = 0;
+                  
+                  rawRegistros.forEach(r => {
+                    if (Number(r.usuario_id) === uId && r.estado === 'Aprobado') {
+                      totalGen += (r.horas_generadas_minutos || 0);
+                    }
+                  });
+                  
+                  rawCompensaciones.forEach(c => {
+                    if (Number(c.usuario_id) === uId) {
+                      totalComp += (c.horas_compensadas_minutos || 0);
+                    }
+                  });
+
+                  const saldoMinutos = totalGen - totalComp;
+                  const esPositivo = saldoMinutos >= 0;
+
+                  return (
+                    <div className={`p-2.5 bg-white rounded-lg text-xs font-semibold flex justify-between items-center border ${esPositivo ? 'border-green-300 text-green-900' : 'border-red-300 text-red-900'}`}>
+                      <span>Saldo total disponible:</span>
+                      <span className="text-sm font-bold">{formatTime(saldoMinutos)} hrs</span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                  <input type="date" required value={compData.fecha} onChange={e => setCompData({...compData, fecha: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Horas a devolver</label>
+                  <input type="text" placeholder="HH:MM" required value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500 text-sm" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Compensación / Motivo</label>
+                <select value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500 text-sm">
+                  <option value="Salida anticipada">Salida anticipada</option>
+                  <option value="Permiso personal">Permiso personal</option>
+                  <option value="Día administrativo">Día administrativo</option>
+                  <option value="Llegada atrasada">Llegada atrasada</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
+                <textarea rows="2" placeholder="Observaciones opcionales..." value={compData.observaciones} onChange={e => setCompData({...compData, observaciones: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-green-500 text-sm"></textarea>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t">
+                <button type="button" onClick={() => setShowModalComp(false)} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50 transition text-sm font-medium">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition text-sm">Aprobar y Descontar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NUEVO USUARIO */}
+      {showModalUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Registrar Nuevo Usuario</h2>
+            {userError && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm font-medium">{userError}</div>}
+            <form onSubmit={handleUserSubmit} className="space-y-4">
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label><input type="text" required value={userData.nombre} onChange={e => setUserData({...userData, nombre: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico (Login)</label><input type="email" required value={userData.email} onChange={e => setUserData({...userData, email: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Contraseña Temporal</label><input type="password" required value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Contraseña</label><input type="password" required value={userData.confirmPassword} onChange={e => setUserData({...userData, confirmPassword: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Cargo</label><input type="text" required value={userData.cargo} onChange={e => setUserData({...userData, cargo: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Departamento</label><input type="text" required value={userData.departamento} onChange={e => setUserData({...userData, departamento: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              </div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Rol</label><select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded-lg p-2"><option value="Auditor">Auditor</option><option value="Administrador">Administrador</option></select></div>
+              <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setShowModalUser(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-teal-800 text-white rounded-lg hover:bg-teal-900 font-medium">Crear Usuario</button></div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETALLES DE REGISTRO */}
+      {registroDetalle && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-xl shadow-2xl">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Detalle del Registro</h2>
+            <div className="space-y-3 text-sm">
+              <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
+              <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
+              <p><strong>Horario:</strong> {registroDetalle.hora_inicio} a {registroDetalle.hora_termino} ({formatTime(registroDetalle.horas_generadas_minutos)})</p>
+              <p><strong>Motivo:</strong> {registroDetalle.motivo}</p>
+              <p><strong>Actividad:</strong> {registroDetalle.actividad}</p>
+              {registroDetalle.intervinientes && registroDetalle.intervinientes.length > 0 && (
+                <div>
+                  <strong>Intervinientes:</strong>
+                  <ul className="list-disc pl-5 mt-1">
+                    {registroDetalle.intervinientes.map((i, idx) => (
+                      <li key={idx}>{i.nombre} ({i.cargo}) - {i.participacion}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {registroDetalle.evidencia_url && (
+                <div className="pt-2">
+                  <a href={`${API_URL}${registroDetalle.evidencia_url}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-medium hover:bg-blue-100">
+                    <DownloadCloud size={18} /> Ver Archivo Adjunto (Evidencia)
+                  </a>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end pt-6"><button onClick={() => setRegistroDetalle(null)} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300">Cerrar</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function App() {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('user');
+    if (saved) {
+      try {
+        setUser(JSON.parse(saved));
+      } catch (e) {
+        console.error("Error al parsear sesión", e);
+      }
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+  };
+
+  return (
+    <HashRouter>
+      <Routes>
+        <Route path="/login" element={!user ? <LoginScreen onLogin={setUser} /> : <Navigate to="/" replace />} />
+        <Route path="/" element={user ? <DashboardApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
+      </Routes>
+    </HashRouter>
+  );
+}
