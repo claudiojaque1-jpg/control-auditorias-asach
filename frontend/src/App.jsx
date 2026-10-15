@@ -941,7 +941,7 @@ export default function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    The saved = localStorage.getItem('user');
+    const saved = localStorage.getItem('user');
     if (saved) {
       try {
         setUser(JSON.parse(saved));
