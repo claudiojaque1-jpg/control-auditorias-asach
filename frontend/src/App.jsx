@@ -1,35 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Trash2, Lock, User, UserPlus, Eye, DownloadCloud, Edit, CheckCircle, Filter, Bell, ChevronRight } from 'lucide-react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from 'chart.js';
-import { Line, Doughnut, Bar } from 'react-chartjs-2';
+import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, User, UserPlus, Eye, Edit, CheckCircle, Filter } from 'lucide-react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
-
-// URL de producción configurada en Railway
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
 
 const formatTime = (mins) => {
@@ -106,9 +79,7 @@ function DashboardApp({ user, onLogout }) {
   const themeBg = isAdmin ? 'bg-teal-800' : 'bg-blue-900';
   const themeHover = isAdmin ? 'hover:bg-teal-900' : 'hover:bg-blue-800';
   const themeActive = isAdmin ? 'bg-teal-900 font-bold' : 'bg-blue-800 font-bold';
-  const themeBorder = isAdmin ? 'border-teal-700' : 'border-blue-800';
   const themeText = isAdmin ? 'text-teal-800' : 'text-blue-900';
-  const themeTextLight = isAdmin ? 'text-teal-200' : 'text-blue-300';
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [stats, setStats] = useState({ generadas: 0, compensadas: 0, pendientes: 0, auditores: 0, porAprobar: 0 });
@@ -117,7 +88,6 @@ function DashboardApp({ user, onLogout }) {
   const [compensaciones, setCompensaciones] = useState([]);
   const [usuariosDB, setUsuariosDB] = useState([]);
 
-  // Filtros Dashboard
   const [dashFiltroAnio, setDashFiltroAnio] = useState('todos');
   const [dashFiltroMes, setDashFiltroMes] = useState('todos');
   const [dashFiltroUsuario, setDashFiltroUsuario] = useState('todos');
@@ -132,8 +102,6 @@ function DashboardApp({ user, onLogout }) {
   const [registroDetalle, setRegistroDetalle] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editingEstado, setEditingEstado] = useState('Pendiente');
-
-  const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
   const [intervinientes, setIntervinientes] = useState([]);
 
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
@@ -259,10 +227,6 @@ function DashboardApp({ user, onLogout }) {
     return min2 - min1;
   };
 
-  const agregarInterviniente = () => setIntervinientes([...intervinientes, { nombre: '', cargo: '', participacion: 'Participante' }]);
-  const actualizarInterviniente = (index, campo, valor) => { const nuevos = [...intervinientes]; nuevos[index][campo] = valor; setIntervinientes(nuevos); };
-  const eliminarInterviniente = (index) => setIntervinientes(intervinientes.filter((_, i) => i !== index));
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     const minutos = (formData.hora_inicio && formData.hora_termino) ? calcularMinutos() : 0;
@@ -277,13 +241,8 @@ function DashboardApp({ user, onLogout }) {
         await fetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     }
 
-    cerrarModalRegistro();
+    setShowModal(false); setEditingId(null); setIntervinientes([]);
     fetchData();
-  };
-
-  const cerrarModalRegistro = () => {
-      setShowModal(false); setEditingId(null); setEditingEstado('Pendiente'); setIntervinientes([]);
-      setFormData({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
   };
 
   const handleCompSubmit = async (e) => {
@@ -291,14 +250,6 @@ function DashboardApp({ user, onLogout }) {
     if(!compData.usuario_id) return alert("Por favor, seleccione el auditor.");
     const [h, m] = compData.horas.split(':').map(Number);
     const totalMinutos = (h * 60) + (m || 0);
-
-    const uId = Number(compData.usuario_id);
-    let totalGen = 0, totalComp = 0;
-    rawRegistros.forEach(r => { if(Number(r.usuario_id) === uId && r.estado === 'Aprobado') totalGen += (r.horas_generadas_minutos || 0); });
-    rawCompensaciones.forEach(c => { if(Number(c.usuario_id) === uId) totalComp += (c.horas_compensadas_minutos || 0); });
-    const saldoRealMinutos = totalGen - totalComp;
-
-    if (totalMinutos > saldoRealMinutos) return alert(`⚠️ Las horas a descontar superan el saldo pendiente de este auditor (${formatTime(saldoRealMinutos)} hrs disponibles).`);
 
     await fetch(`${API_URL}/api/compensaciones`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...compData, horas_compensadas_minutos: totalMinutos })
@@ -353,52 +304,32 @@ function DashboardApp({ user, onLogout }) {
       }
   };
 
-  // Configuración de las Gráficas para el Dashboard
-  const tendenciaData = {
-    labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct'],
-    datasets: [
-      {
-        label: 'Horas Realizadas',
-        data: [12, 19, 15, 25, 22, 30, 28, 35, 32, Math.round(stats.generadas / 60) || 10],
-        borderColor: '#059669',
-        backgroundColor: 'rgba(5, 150, 105, 0.1)',
-        fill: true,
-        tension: 0.3
-      },
-      {
-        label: 'Horas Compensadas',
-        data: [10, 15, 12, 20, 18, 25, 24, 30, 28, Math.round(stats.compensadas / 60) || 5],
-        borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        fill: true,
-        tension: 0.3
-      }
-    ]
-  };
+  // Datos para Recharts
+  const tendenciaData = [
+    { mes: 'Ene', Realizadas: 12, Compensadas: 10 },
+    { mes: 'Feb', Realizadas: 19, Compensadas: 15 },
+    { mes: 'Mar', Realizadas: 15, Compensadas: 12 },
+    { mes: 'Abr', Realizadas: 25, Compensadas: 20 },
+    { mes: 'May', Realizadas: 22, Compensadas: 18 },
+    { mes: 'Jun', Realizadas: 30, Compensadas: 25 },
+    { mes: 'Jul', Realizadas: 28, Compensadas: 24 },
+    { mes: 'Ago', Realizadas: 35, Compensadas: 30 },
+    { mes: 'Sep', Realizadas: 32, Compensadas: 28 },
+    { mes: 'Oct', Realizadas: Math.round(stats.generadas / 60) || 10, Compensadas: Math.round(stats.compensadas / 60) || 5 }
+  ];
 
-  const estadoData = {
-    labels: ['Aprobadas', 'Pendientes', 'Autorizadas'],
-    datasets: [{
-      data: [
-        registros.filter(r => r.estado === 'Aprobado').length,
-        registros.filter(r => r.estado === 'Pendiente').length,
-        registros.filter(r => r.estado === 'Autorizado').length
-      ],
-      backgroundColor: ['#10b981', '#f59e0b', '#3b82f6']
-    }]
-  };
+  const estadoData = [
+    { name: 'Aprobadas', value: registros.filter(r => r.estado === 'Aprobado').length || 1, color: '#10b981' },
+    { name: 'Pendientes', value: registros.filter(r => r.estado === 'Pendiente').length || 1, color: '#f59e0b' },
+    { name: 'Autorizadas', value: registros.filter(r => r.estado === 'Autorizado').length || 1, color: '#3b82f6' }
+  ];
 
-  const auditoresData = {
-    labels: usuariosDB.length > 0 ? usuariosDB.map(u => u.nombre) : ['Sin registros'],
-    datasets: [{
-      label: 'Registros',
-      data: usuariosDB.map(u => rawRegistros.filter(r => String(r.usuario_id) === String(u.id)).length),
-      backgroundColor: '#065f46',
-      borderRadius: 6
-    }]
-  };
+  const auditoresData = usuariosDB.map(u => ({
+    nombre: u.nombre.split(' ')[0],
+    registros: rawRegistros.filter(r => String(r.usuario_id) === String(u.id)).length
+  }));
 
-  const menuClass = (tab) => `flex items-center gap-2.5 p-2.5 w-full rounded-lg transition text-left text-xs ${activeTab === tab ? themeActive : themeHover}`;
+  const menuClass = (tab) => `flex items-center gap-2.5 p-2.5 w-full rounded-lg transition text-left text-xs ${activeTab === tab ? (isAdmin ? 'bg-teal-900 font-bold' : 'bg-blue-800 font-bold') : (isAdmin ? 'hover:bg-teal-900' : 'hover:bg-blue-800')}`;
 
   const renderContent = () => {
     if (activeTab === 'dashboard') {
@@ -408,22 +339,13 @@ function DashboardApp({ user, onLogout }) {
 
           {isAdmin && (
               <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-3 items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 text-gray-700 font-bold">
-                      <Filter size={16} className="text-teal-700"/> <span>Filtros del Dashboard:</span>
-                  </div>
+                  <div className="flex items-center gap-2 text-gray-700 font-bold"><Filter size={16} className="text-teal-700"/> <span>Filtros del Dashboard:</span></div>
                   <div className="flex flex-wrap gap-2 items-center">
                       <select value={dashFiltroAnio} onChange={e => setDashFiltroAnio(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
-                          <option value="todos">📅 Todos los Años</option>
-                          <option value="2025">2025</option>
-                          <option value="2026">2026</option>
-                          <option value="2027">2027</option>
+                          <option value="todos">📅 Todos los Años</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option>
                       </select>
                       <select value={dashFiltroMes} onChange={e => setDashFiltroMes(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
-                          <option value="todos">📆 Todos los Meses</option>
-                          <option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option>
-                          <option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option>
-                          <option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option>
-                          <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+                          <option value="todos">📆 Todos los Meses</option><option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option><option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option><option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
                       </select>
                       <select value={dashFiltroUsuario} onChange={e => setDashFiltroUsuario(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
                           <option value="todos">👥 Todos los Auditores</option>
@@ -442,18 +364,35 @@ function DashboardApp({ user, onLogout }) {
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-gray-400 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">{isAdmin ? "Auditores Activos" : "Mis Registros"}</p><h2 className="text-2xl font-extrabold text-gray-700 mt-1">{isAdmin ? stats.auditores : registros.length}</h2></div>
           </div>
 
-          {/* SECCIÓN DE GRÁFICAS */}
+          {/* SECCIÓN DE GRÁFICAS (RECHARTS) */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 lg:col-span-2 flex flex-col justify-between">
               <h3 className="font-bold text-gray-700 text-sm mb-3">Tendencia de Horas: Realizadas vs Compensadas</h3>
-              <div className="relative h-64 w-full">
-                <Line data={tendenciaData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }} />
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100% " height="100%">
+                  <LineChart data={tendenciaData}>
+                    <XAxis dataKey="mes" stroke="#888888" fontSize={12} />
+                    <YAxis stroke="#888888" fontSize={12} />
+                    <RechartsTooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="Realizadas" stroke="#059669" strokeWidth={2} />
+                    <Line type="monotone" dataKey="Compensadas" stroke="#3b82f6" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
             </div>
+
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
               <h3 className="font-bold text-gray-700 text-sm mb-3">Distribución por Estado</h3>
-              <div className="relative h-64 w-full flex items-center justify-center">
-                <Doughnut data={estadoData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }} />
+              <div className="h-64 w-full flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={estadoData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} fill="#8884d8" label>
+                      {estadoData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
+                    </Pie>
+                    <RechartsTooltip />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>
@@ -461,8 +400,15 @@ function DashboardApp({ user, onLogout }) {
           {isAdmin && (
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
               <h3 className="font-bold text-gray-700 text-sm mb-3">Carga de Trabajo por Auditor</h3>
-              <div className="relative h-48 w-full">
-                <Bar data={auditoresData} options={{ indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }} />
+              <div className="h-48 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={auditoresData} layout="vertical">
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="nombre" type="category" stroke="#888888" fontSize={12} width={80} />
+                    <RechartsTooltip />
+                    <Bar dataKey="registros" fill="#065f46" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
           )}
@@ -592,50 +538,28 @@ function DashboardApp({ user, onLogout }) {
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <header className="bg-white border-b border-gray-100 p-4 flex justify-between items-center shadow-sm">
           <h2 className="text-lg font-bold text-gray-800 capitalize">{activeTab}</h2>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setShowModal(true)} className="bg-teal-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold hover:bg-teal-800 flex items-center gap-1.5 shadow-sm"><Plus size={16} /> Nuevo Registro</button>
-          </div>
+          <button onClick={() => setShowModal(true)} className="bg-teal-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold hover:bg-teal-800 flex items-center gap-1.5 shadow-sm"><Plus size={16} /> Nuevo Registro</button>
         </header>
         <div className="p-6">{renderContent()}</div>
       </main>
 
-      {/* MODAL NUEVO / EDITAR REGISTRO */}
+      {/* MODAL NUEVO / EDITAR */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
-            <h3 className="font-bold text-base mb-4 text-gray-800">{editingId ? 'Editar / Rellenar Registro' : 'Nuevo Registro de Horas'}</h3>
+            <h3 className="font-bold text-base mb-4 text-gray-800">{editingId ? 'Editar Registro' : 'Nuevo Registro de Horas'}</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block font-medium mb-1">Fecha</label>
-                <input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" />
-              </div>
+              <div><label className="block font-medium mb-1">Fecha</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block font-medium mb-1">Hora Inicio</label><input type="time" value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
                 <div><label className="block font-medium mb-1">Hora Término</label><input type="time" value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
               </div>
-              <div>
-                <label className="block font-medium mb-1">Actividad Realizada</label>
-                <textarea rows="3" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa la auditoría..."></textarea>
-              </div>
+              <div><label className="block font-medium mb-1">Actividad Realizada</label><textarea rows="3" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa la auditoría..."></textarea></div>
               <div className="flex justify-end gap-2 pt-3">
-                <button type="button" onClick={cerrarModalRegistro} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold">Guardar Registro</button>
+                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold">Guardar</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DETALLE */}
-      {registroDetalle && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3">
-            <h3 className="font-bold text-base text-gray-800">Detalle del Trabajo</h3>
-            <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
-            <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
-            <p><strong>Actividad:</strong> {registroDetalle.actividad}</p>
-            <p><strong>Horas:</strong> {formatTime(registroDetalle.horas_generadas_minutos)}</p>
-            <div className="flex justify-end pt-3"><button onClick={() => setRegistroDetalle(null)} className="px-4 py-2 bg-gray-200 rounded-lg font-medium">Cerrar</button></div>
           </div>
         </div>
       )}
@@ -649,16 +573,10 @@ function DashboardApp({ user, onLogout }) {
             <form onSubmit={handleUserSubmit} className="space-y-3">
               <div><label className="font-medium">Nombre</label><input type="text" required value={userData.nombre} onChange={e => setUserData({...userData, nombre: e.target.value})} className="w-full border rounded p-2" /></div>
               <div><label className="font-medium">Correo</label><input type="email" required value={userData.email} onChange={e => setUserData({...userData, email: e.target.value})} className="w-full border rounded p-2" /></div>
-              <div><label className="font-medium">Contraseña {editingUserId && "(Dejar en blanco para mantener)"}</label><input type="password" value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded p-2" /></div>
+              <div><label className="font-medium">Contraseña</label><input type="password" value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded p-2" /></div>
               <div><label className="font-medium">Confirmar Contraseña</label><input type="password" value={userData.confirmPassword} onChange={e => setUserData({...userData, confirmPassword: e.target.value})} className="w-full border rounded p-2" /></div>
               <div><label className="font-medium">Cargo</label><input type="text" value={userData.cargo} onChange={e => setUserData({...userData, cargo: e.target.value})} className="w-full border rounded p-2" /></div>
-              <div>
-                <label className="font-medium">Rol</label>
-                <select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded p-2">
-                  <option value="Auditor">Auditor</option>
-                  <option value="Administrador">Administrador</option>
-                </select>
-              </div>
+              <div><label className="font-medium">Rol</label><select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded p-2"><option value="Auditor">Auditor</option><option value="Administrador">Administrador</option></select></div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowModalUser(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
                 <button type="submit" className="px-3 py-1.5 bg-teal-700 text-white rounded font-bold">Guardar</button>
