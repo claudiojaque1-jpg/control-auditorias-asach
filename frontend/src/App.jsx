@@ -75,17 +75,17 @@ function LoginScreen({ onLogin }) {
 
 function DashboardApp({ user, onLogout }) {
   const isAdmin = user.rol === 'Administrador';
-  
+
   const themeBg = isAdmin ? 'bg-teal-800' : 'bg-blue-900';
   const themeHover = isAdmin ? 'hover:bg-teal-900' : 'hover:bg-blue-800';
   const themeActive = isAdmin ? 'bg-teal-900 font-bold' : 'bg-blue-800 font-bold';
   const themeBorder = isAdmin ? 'border-teal-700' : 'border-blue-800';
   const themeText = isAdmin ? 'text-teal-800' : 'text-blue-900';
   const themeTextLight = isAdmin ? 'text-teal-200' : 'text-blue-300';
-  
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [stats, setStats] = useState({ generadas: 0, compensadas: 0, pendientes: 0, auditores: 0, porAprobar: 0 });
-  
+
   const [registros, setRegistros] = useState([]);
   const [compensaciones, setCompensaciones] = useState([]);
   const [usuariosDB, setUsuariosDB] = useState([]);
@@ -113,7 +113,7 @@ function DashboardApp({ user, onLogout }) {
 
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
   const [compData, setCompData] = useState({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' });
-  
+
   // Estados para creación y edición de usuario
   const [editingUserId, setEditingUserId] = useState(null);
   const [userData, setUserData] = useState({ nombre: '', email: '', password: '', confirmPassword: '', cargo: '', departamento: '', rol: 'Auditor' });
@@ -131,14 +131,14 @@ function DashboardApp({ user, onLogout }) {
       const resEst = await fetch(`${API_URL}/api/estadisticas/completas${queryParams}`);
       if(resEst.ok) {
         const est = await resEst.json();
-        
+
         const resRegs = await fetch(`${API_URL}/api/registros/ultimos${queryParams}`);
         const regsConEvidencia = await resRegs.json();
 
         setRawRegistros(regsConEvidencia || est.registrosCompletos || []);
         setRawCompensaciones(est.compensacionesCompletas || est.compensaciones || []);
         setRawUsuarios(est.usuarios || []);
-        
+
         aplicarFiltrosDashboard(regsConEvidencia || [], est.compensacionesCompletas || [], est.usuarios || []);
       }
     } catch (err) {
@@ -232,7 +232,7 @@ function DashboardApp({ user, onLogout }) {
     let [h2, m2] = formData.hora_termino.split(':').map(Number);
     let min1 = h1 * 60 + m1;
     let min2 = h2 * 60 + m2;
-    if (min2 < min1) min2 += 24 * 60; 
+    if (min2 < min1) min2 += 24 * 60;
     return min2 - min1;
   };
 
@@ -243,7 +243,7 @@ function DashboardApp({ user, onLogout }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const minutos = (formData.hora_inicio && formData.hora_termino) ? calcularMinutos() : 0;
-    
+
     let nuevoEstado = editingEstado;
     if (editingEstado === 'Autorizado' && minutos > 0) {
         nuevoEstado = 'Aprobado';
@@ -256,7 +256,7 @@ function DashboardApp({ user, onLogout }) {
     } else {
         await fetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     }
-    
+
     cerrarModalRegistro();
     fetchData();
   };
@@ -279,11 +279,11 @@ function DashboardApp({ user, onLogout }) {
     const saldoRealMinutos = totalGen - totalComp;
 
     if (totalMinutos > saldoRealMinutos) return alert(`⚠️ Las horas a descontar superan el saldo pendiente de este auditor (${formatTime(saldoRealMinutos)} hrs disponibles).`);
-    
-    await fetch(`${API_URL}/api/compensaciones`, { 
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...compData, horas_compensadas_minutos: totalMinutos }) 
+
+    await fetch(`${API_URL}/api/compensaciones`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...compData, horas_compensadas_minutos: totalMinutos })
     });
-    
+
     setShowModalComp(false); setCompData({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' }); fetchData();
   };
 
@@ -328,10 +328,10 @@ function DashboardApp({ user, onLogout }) {
             payload.password = userData.password;
         }
 
-        const res = await fetch(url, { 
-            method, 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify(payload) 
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (!res.ok) {
@@ -339,9 +339,9 @@ function DashboardApp({ user, onLogout }) {
             return;
         }
 
-        setShowModalUser(false); 
+        setShowModalUser(false);
         setEditingUserId(null);
-        setUserData({ nombre: '', email: '', password: '', confirmPassword: '', cargo: '', departamento: '', rol: 'Auditor' }); 
+        setUserData({ nombre: '', email: '', password: '', confirmPassword: '', cargo: '', departamento: '', rol: 'Auditor' });
         fetchData();
     } catch(err) {
         setUserError('⚠️ Error de conexión con el servidor.');
@@ -368,7 +368,7 @@ function DashboardApp({ user, onLogout }) {
       return (
         <div className="space-y-6">
           {stats.pendientes < 0 && <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded flex items-center gap-3"><AlertTriangle className="text-red-500" /><p className="text-red-700 font-medium">Hay <strong>{formatTime(stats.pendientes)} horas de déficit</strong> en el periodo seleccionado.</p></div>}
-          
+
           {isAdmin && (
               <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-4 items-center justify-between">
                   <div className="flex items-center gap-2 text-gray-700 font-bold">
@@ -433,15 +433,15 @@ function DashboardApp({ user, onLogout }) {
                       </td>
                       {isAdmin && <td className="p-4 font-medium">{r.auditor}</td>}
                       <td className="p-4 text-sm truncate max-w-xs">
-                          {r.actividad} 
-                          {Number(r.tiene_evidencia) > 0 && <Paperclip size={14} className={`inline ${themeText} ml-1`} title="Tiene adjunto" />} 
+                          {r.actividad}
+                          {Number(r.tiene_evidencia) > 0 && <Paperclip size={14} className={`inline ${themeText} ml-1`} title="Tiene adjunto" />}
                           {Number(r.total_intervinientes) > 0 && <span className="inline-flex items-center gap-1 ml-2 text-gray-500 text-xs"><Users size={14}/> {r.total_intervinientes}</span>}
                       </td>
                       <td className="p-4 font-bold text-gray-700">{formatTime(r.horas_generadas_minutos)}</td>
                       <td className="p-4">{renderBadgeEstado(r.estado)}</td>
                       <td className="p-4 flex justify-center gap-2">
                           <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600 transition" title="Ver Detalle"><Eye size={18} /></button>
-                          
+
                           {(isAdmin || r.estado === 'Autorizado' || r.estado === 'Pendiente') && (
                               <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title={r.estado === 'Autorizado' ? "Rellenar Actividad y Horas" : "Editar / Corregir"}><Edit size={18} /></button>
                           )}
@@ -483,8 +483,8 @@ function DashboardApp({ user, onLogout }) {
                         </td>
                         {isAdmin && <td className="p-4 font-medium">{r.auditor}</td>}
                         <td className="p-4 text-sm truncate max-w-xs">
-                            {r.actividad} 
-                            {Number(r.tiene_evidencia) > 0 && <Paperclip size={14} className={`inline ${themeText} ml-1`} title="Tiene adjunto" />} 
+                            {r.actividad}
+                            {Number(r.tiene_evidencia) > 0 && <Paperclip size={14} className={`inline ${themeText} ml-1`} title="Tiene adjunto" />}
                             {Number(r.total_intervinientes) > 0 && <span className="inline-flex items-center gap-1 ml-2 text-gray-500 text-xs"><Users size={14}/> {r.total_intervinientes}</span>}
                         </td>
                         <td className="p-4 font-bold text-gray-700">{formatTime(r.horas_generadas_minutos)}</td>
@@ -597,11 +597,11 @@ function DashboardApp({ user, onLogout }) {
         <header className="bg-white border-b border-gray-200 p-4 flex justify-between items-center shadow-sm">
           <h1 className="text-xl font-bold text-gray-800 capitalize">{activeTab}</h1>
           <div className="flex items-center gap-3">
-            
+
             {/* BOTÓN DE NOTIFICACIONES */}
             <div className="relative">
-              <button 
-                onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} 
+              <button
+                onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
                 className="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition relative flex items-center justify-center shadow-sm"
                 title="Solicitudes por Autorizar"
               >
@@ -616,7 +616,7 @@ function DashboardApp({ user, onLogout }) {
               {/* MENÚ DESPLEGABLE DE NOTIFICACIONES */}
               {showNotificationsDropdown && (
                 <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 overflow-hidden">
-                  
+
                   {/* Encabezado Verde Azulado con Badge Amarillo */}
                   <div className="bg-teal-800 p-3.5 text-white flex justify-between items-center">
                     <span className="font-bold text-sm flex items-center gap-2">
@@ -633,11 +633,11 @@ function DashboardApp({ user, onLogout }) {
                       <p className="text-xs text-gray-400 text-center py-6 font-medium">No hay solicitudes pendientes por autorizar</p>
                     ) : (
                       rawRegistros.filter(r => r.estado === 'Pendiente').map(r => (
-                        <div 
-                          key={r.id} 
-                          onClick={() => { 
-                            verDetallesRegistro(r.id); 
-                            setShowNotificationsDropdown(false); 
+                        <div
+                          key={r.id}
+                          onClick={() => {
+                            verDetallesRegistro(r.id);
+                            setShowNotificationsDropdown(false);
                           }}
                           className="p-3 hover:bg-gray-50 rounded-xl transition cursor-pointer flex justify-between items-center gap-3"
                         >
@@ -664,7 +664,7 @@ function DashboardApp({ user, onLogout }) {
 
                   {/* Pie del Desplegable */}
                   <div className="bg-gray-50 p-3 text-center border-t border-gray-100">
-                    <button 
+                    <button
                       onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }}
                       className="text-xs font-bold text-teal-800 hover:text-teal-950 transition"
                     >
@@ -678,8 +678,8 @@ function DashboardApp({ user, onLogout }) {
 
             {/* BOTÓN NUEVO REGISTRO (SOLO VISIBLE EN EL DASHBOARD) */}
             {activeTab === 'dashboard' && (
-              <button 
-                onClick={() => setShowModal(true)} 
+              <button
+                onClick={() => setShowModal(true)}
                 className={`${themeBg} text-white px-4 py-2.5 rounded-xl font-medium ${themeHover} flex items-center gap-2 transition shadow-md hover:shadow-lg`}
               >
                 <Plus size={18} /> Nuevo Registro
@@ -710,7 +710,7 @@ function DashboardApp({ user, onLogout }) {
               </div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label><select value={formData.motivo} onChange={e => setFormData({...formData, motivo: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500"><option value="Auditoría">Auditoría</option><option value="Inventario">Inventario</option><option value="Revisión Documental">Revisión Documental</option><option value="Otro">Otro</option></select></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Descripción de la Actividad</label><textarea required rows="3" value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Detalle el trabajo realizado..."></textarea></div>
-              
+
               {/* INTERVINIENTES */}
               <div className="border-t pt-4">
                 <div className="flex justify-between items-center mb-2">
@@ -745,10 +745,10 @@ function DashboardApp({ user, onLogout }) {
             <form onSubmit={handleCompSubmit} className="space-y-4">
               <div className="bg-green-50/60 p-3 rounded-xl border border-green-200 space-y-2">
                 <label className="block text-sm font-bold text-green-900">Asignar descuento a:</label>
-                <select 
-                  required 
-                  value={compData.usuario_id} 
-                  onChange={e => setCompData({...compData, usuario_id: e.target.value})} 
+                <select
+                  required
+                  value={compData.usuario_id}
+                  onChange={e => setCompData({...compData, usuario_id: e.target.value})}
                   className="w-full border rounded-lg p-2 outline-none bg-white focus:ring-2 focus:ring-green-500 text-sm"
                 >
                   <option value="">Seleccione auditor...</option>
@@ -761,13 +761,13 @@ function DashboardApp({ user, onLogout }) {
                   const uId = Number(compData.usuario_id);
                   let totalGen = 0;
                   let totalComp = 0;
-                  
+
                   rawRegistros.forEach(r => {
                     if (Number(r.usuario_id) === uId && r.estado === 'Aprobado') {
                       totalGen += (r.horas_generadas_minutos || 0);
                     }
                   });
-                  
+
                   rawCompensaciones.forEach(c => {
                     if (Number(c.usuario_id) === uId) {
                       totalComp += (c.horas_compensadas_minutos || 0);
@@ -831,14 +831,14 @@ function DashboardApp({ user, onLogout }) {
             <form onSubmit={handleUserSubmit} className="space-y-4">
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label><input type="text" required value={userData.nombre} onChange={e => setUserData({...userData, nombre: e.target.value})} className="w-full border rounded-lg p-2" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico (Login)</label><input type="email" required value={userData.email} onChange={e => setUserData({...userData, email: e.target.value})} className="w-full border rounded-lg p-2" /></div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {editingUserId ? 'Nueva Contraseña (dejar en blanco para mantener actual)' : 'Contraseña Temporal'}
                 </label>
                 <input type="password" required={!editingUserId} value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded-lg p-2" />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {editingUserId ? 'Confirmar Nueva Contraseña' : 'Confirmar Contraseña'}
@@ -850,7 +850,7 @@ function DashboardApp({ user, onLogout }) {
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Cargo</label><input type="text" required value={userData.cargo} onChange={e => setUserData({...userData, cargo: e.target.value})} className="w-full border rounded-lg p-2" /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Departamento</label><input type="text" required value={userData.departamento} onChange={e => setUserData({...userData, departamento: e.target.value})} className="w-full border rounded-lg p-2" /></div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
                 <select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded-lg p-2">
@@ -886,7 +886,7 @@ function DashboardApp({ user, onLogout }) {
               <p><strong>Horario Propuesto:</strong> {registroDetalle.hora_inicio && registroDetalle.hora_termino ? `${registroDetalle.hora_inicio} a ${registroDetalle.hora_termino}` : 'Por definir'}</p>
               <p><strong>Motivo:</strong> {registroDetalle.motivo}</p>
               <p><strong>Actividad:</strong> {registroDetalle.actividad}</p>
-              
+
               {registroDetalle.intervinientes && registroDetalle.intervinientes.length > 0 && (
                 <div>
                   <strong>Intervinientes:</strong>
@@ -911,14 +911,14 @@ function DashboardApp({ user, onLogout }) {
               <div>
                 {isAdmin && registroDetalle.estado === 'Pendiente' && (
                   <div className="flex gap-2">
-                    <button 
-                      onClick={() => cambiarEstado(registroDetalle.id, 'Autorizado')} 
+                    <button
+                      onClick={() => cambiarEstado(registroDetalle.id, 'Autorizado')}
                       className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition text-sm"
                     >
                       Autorizar Solicitud
                     </button>
-                    <button 
-                      onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')} 
+                    <button
+                      onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')}
                       className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition text-sm"
                     >
                       Rechazar
@@ -926,8 +926,8 @@ function DashboardApp({ user, onLogout }) {
                   </div>
                 )}
               </div>
-              <button 
-                onClick={() => setRegistroDetalle(null)} 
+              <button
+                onClick={() => setRegistroDetalle(null)}
                 className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300 transition text-sm"
               >
                 Cerrar
@@ -965,7 +965,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={!user ? <LoginScreen onLogin={setUser} /> : <Navigate to="/" replace />} />
         <Route path="/" element={user ? <DashboardApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
-        <Route path="*" element={<Navigate to={user ? "/" :="/login"} replace />} />
+        <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
       </Routes>
     </HashRouter>
   );
