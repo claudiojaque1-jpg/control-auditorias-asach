@@ -10,7 +10,7 @@ const formatTime = (mins) => {
   const isNegative = mins < 0;
   const absMins = Math.abs(mins);
   const h = Math.floor(absMins / 60);
-  const m = absMins % 60;
+  const m = Math.floor(absMins % 60);
   return `${isNegative ? '-' : ''}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 };
 
@@ -114,7 +114,8 @@ function DashboardApp({ user, onLogout }) {
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
   const [compData, setCompData] = useState({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' });
   
-  // Estados para creación de usuario con confirmación de contraseña y warnings
+  // Estados para creación y edición de usuario
+  const [editingUserId, setEditingUserId] = useState(null);
   const [userData, setUserData] = useState({ nombre: '', email: '', password: '', confirmPassword: '', cargo: '', departamento: '', rol: 'Auditor' });
   const [userError, setUserError] = useState('');
 
@@ -286,35 +287,60 @@ function DashboardApp({ user, onLogout }) {
     setShowModalComp(false); setCompData({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' }); fetchData();
   };
 
+  const abrirCreacionUsuario = () => {
+    setUserError('');
+    setEditingUserId(null);
+    setUserData({ nombre: '', email: '', password: '', confirmPassword: '', cargo: '', departamento: '', rol: 'Auditor' });
+    setShowModalUser(true);
+  };
+
+  const abrirEdicionUsuario = (u) => {
+    setUserError('');
+    setEditingUserId(u.id);
+    setUserData({ nombre: u.nombre, email: u.email, password: '', confirmPassword: '', cargo: u.cargo || '', departamento: u.departamento || '', rol: u.rol || 'Auditor' });
+    setShowModalUser(true);
+  };
+
   const handleUserSubmit = async (e) => {
     e.preventDefault();
     setUserError('');
 
-    if (userData.password !== userData.confirmPassword) {
-        setUserError('⚠️ Las contraseñas no coinciden. Por favor, verifíquelas.');
-        return;
+    if (userData.password || !editingUserId) {
+      if (userData.password !== userData.confirmPassword) {
+          setUserError('⚠️ Las contraseñas no coinciden. Por favor, verifíquelas.');
+          return;
+      }
     }
 
     try {
-        const res = await fetch(`${API_URL}/api/usuarios`, { 
-            method: 'POST', 
+        const url = editingUserId ? `${API_URL}/api/usuarios/${editingUserId}` : `${API_URL}/api/usuarios`;
+        const method = editingUserId ? 'PUT' : 'POST';
+
+        const payload = {
+            nombre: userData.nombre,
+            email: userData.email,
+            cargo: userData.cargo,
+            departamento: userData.departamento,
+            rol: userData.rol
+        };
+
+        if (userData.password) {
+            payload.password = userData.password;
+        }
+
+        const res = await fetch(url, { 
+            method, 
             headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({
-                nombre: userData.nombre,
-                email: userData.email,
-                password: userData.password,
-                cargo: userData.cargo,
-                departamento: userData.departamento,
-                rol: userData.rol
-            }) 
+            body: JSON.stringify(payload) 
         });
         const data = await res.json();
         if (!res.ok) {
-            setUserError(`⚠️ ${data.error || 'Error al registrar usuario'}`);
+            setUserError(`⚠️ ${data.error || 'Error al guardar usuario'}`);
             return;
         }
 
         setShowModalUser(false); 
+        setEditingUserId(null);
         setUserData({ nombre: '', email: '', password: '', confirmPassword: '', cargo: '', departamento: '', rol: 'Auditor' }); 
         fetchData();
     } catch(err) {
@@ -513,14 +539,31 @@ function DashboardApp({ user, onLogout }) {
         <div className="space-y-6">
           <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
             <div><h2 className="text-lg font-bold text-gray-800">Administración de Usuarios</h2><p className="text-sm text-gray-500">Gestiona los accesos a la plataforma</p></div>
-            <button onClick={() => { setUserError(''); setShowModalUser(true); }} className={`${themeBg} text-white px-4 py-2 rounded-lg font-medium ${themeHover} flex gap-2 transition`}><UserPlus size={18} /> Nuevo Usuario</button>
+            <button onClick={abrirCreacionUsuario} className={`${themeBg} text-white px-4 py-2 rounded-lg font-medium ${themeHover} flex gap-2 transition`}><UserPlus size={18} /> Nuevo Usuario</button>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <table className="w-full text-left border-collapse">
-              <thead><tr className="bg-white border-b text-sm text-gray-500"><th className="p-4">Nombre</th><th className="p-4">Correo (Login)</th><th className="p-4">Cargo / Depto</th><th className="p-4">Rol</th></tr></thead>
+              <thead><tr className="bg-white border-b text-sm text-gray-500"><th className="p-4">Nombre</th><th className="p-4">Correo (Login)</th><th className="p-4">Cargo / Depto</th><th className="p-4">Rol</th><th className="p-4 text-center">Acción</th></tr></thead>
               <tbody>
                 {usuariosDB.map(u => (
-                  <tr key={u.id} className="border-b hover:bg-gray-50"><td className="p-4 font-medium">{u.nombre}</td><td className="p-4 text-gray-600">{u.email}</td><td className="p-4 text-sm">{u.cargo} - {u.departamento}</td><td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-medium ${u.rol === 'Administrador' ? 'bg-teal-100 text-teal-800' : 'bg-gray-100 text-gray-800'}`}>{u.rol}</span></td></tr>
+                  <tr key={u.id} className="border-b hover:bg-gray-50">
+                    <td className="p-4 font-medium">{u.nombre}</td>
+                    <td className="p-4 text-gray-600">{u.email}</td>
+                    <td className="p-4 text-sm">{u.cargo} - {u.departamento}</td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        u.rol === 'Administrador' ? 'bg-teal-100 text-teal-800' :
+                        u.rol === 'Analista' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {u.rol}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center">
+                      <button onClick={() => abrirEdicionUsuario(u)} className="text-gray-500 hover:text-blue-600 transition" title="Editar Usuario">
+                        <Edit size={18} />
+                      </button>
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -779,23 +822,50 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL NUEVO USUARIO */}
+      {/* MODAL CREAR / EDITAR USUARIO CON ROL ANALISTA Y CAMBIO DE CONTRASEÑA */}
       {showModalUser && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Registrar Nuevo Usuario</h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-4">{editingUserId ? 'Editar Usuario' : 'Registrar Nuevo Usuario'}</h2>
             {userError && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm font-medium">{userError}</div>}
             <form onSubmit={handleUserSubmit} className="space-y-4">
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label><input type="text" required value={userData.nombre} onChange={e => setUserData({...userData, nombre: e.target.value})} className="w-full border rounded-lg p-2" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico (Login)</label><input type="email" required value={userData.email} onChange={e => setUserData({...userData, email: e.target.value})} className="w-full border rounded-lg p-2" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Contraseña Temporal</label><input type="password" required value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded-lg p-2" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Contraseña</label><input type="password" required value={userData.confirmPassword} onChange={e => setUserData({...userData, confirmPassword: e.target.value})} className="w-full border rounded-lg p-2" /></div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {editingUserId ? 'Nueva Contraseña (dejar en blanco para mantener actual)' : 'Contraseña Temporal'}
+                </label>
+                <input type="password" required={!editingUserId} value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded-lg p-2" />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {editingUserId ? 'Confirmar Nueva Contraseña' : 'Confirmar Contraseña'}
+                </label>
+                <input type="password" required={!editingUserId || Boolean(userData.password)} value={userData.confirmPassword} onChange={e => setUserData({...userData, confirmPassword: e.target.value})} className="w-full border rounded-lg p-2" />
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Cargo</label><input type="text" required value={userData.cargo} onChange={e => setUserData({...userData, cargo: e.target.value})} className="w-full border rounded-lg p-2" /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Departamento</label><input type="text" required value={userData.departamento} onChange={e => setUserData({...userData, departamento: e.target.value})} className="w-full border rounded-lg p-2" /></div>
               </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Rol</label><select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded-lg p-2"><option value="Auditor">Auditor</option><option value="Administrador">Administrador</option></select></div>
-              <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={() => setShowModalUser(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-teal-800 text-white rounded-lg hover:bg-teal-900 font-medium">Crear Usuario</button></div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
+                <select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded-lg p-2">
+                  <option value="Auditor">Auditor</option>
+                  <option value="Analista">Analista</option>
+                  <option value="Administrador">Administrador</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button type="button" onClick={() => { setShowModalUser(false); setEditingUserId(null); }} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-teal-800 text-white rounded-lg hover:bg-teal-900 font-medium">
+                  {editingUserId ? 'Guardar Cambios' : 'Crear Usuario'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -895,7 +965,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={!user ? <LoginScreen onLogin={setUser} /> : <Navigate to="/" replace />} />
         <Route path="/" element={user ? <DashboardApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
-        <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
+        <Route path="*" element={<Navigate to={user ? "/" :="/login"} replace />} />
       </Routes>
     </HashRouter>
   );
