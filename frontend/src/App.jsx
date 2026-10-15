@@ -109,7 +109,6 @@ function DashboardApp({ user, onLogout }) {
   // Estado para el menú desplegable de notificaciones
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
-  const [archivo, setArchivo] = useState(null);
   const [intervinientes, setIntervinientes] = useState([]);
 
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
@@ -250,21 +249,11 @@ function DashboardApp({ user, onLogout }) {
     }
 
     const payload = { ...formData, horas_generadas_minutos: minutos, usuario_id: user.id, intervinientes, estado: nuevoEstado };
-    let regId = editingId;
 
     if (editingId) {
         await fetch(`${API_URL}/api/registros/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     } else {
-        const resReg = await fetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        const dataReg = await resReg.json();
-        regId = dataReg.id;
-    }
-
-    if (archivo && regId) {
-      const formDataFile = new FormData();
-      formDataFile.append('archivo', archivo);
-      formDataFile.append('registro_id', regId);
-      await fetch(`${API_URL}/api/evidencias`, { method: 'POST', body: formDataFile });
+        await fetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     }
     
     cerrarModalRegistro();
@@ -272,7 +261,7 @@ function DashboardApp({ user, onLogout }) {
   };
 
   const cerrarModalRegistro = () => {
-      setShowModal(false); setEditingId(null); setEditingEstado('Pendiente'); setIntervinientes([]); setArchivo(null);
+      setShowModal(false); setEditingId(null); setEditingEstado('Pendiente'); setIntervinientes([]);
       setFormData({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
   };
 
@@ -660,7 +649,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       </main>
 
-      {/* MODAL NUEVO / EDITAR REGISTRO */}
+      {/* MODAL NUEVO / EDITAR REGISTRO (SIN OPCIÓN DE ADJUNTAR ARCHIVO) */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -693,7 +682,6 @@ function DashboardApp({ user, onLogout }) {
                 ))}
               </div>
 
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Adjuntar Evidencia (PDF o Imagen)</label><input type="file" onChange={e => setArchivo(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" /></div>
               <div className="flex justify-end gap-3 pt-4"><button type="button" onClick={cerrarModalRegistro} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50">Cancelar</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Guardar Registro</button></div>
             </form>
           </div>
