@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, User, UserPlus, Eye, Edit, CheckCircle, Filter } from 'lucide-react';
+import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
@@ -78,7 +78,6 @@ function DashboardApp({ user, onLogout }) {
 
   const themeBg = isAdmin ? 'bg-teal-800' : 'bg-blue-900';
   const themeHover = isAdmin ? 'hover:bg-teal-900' : 'hover:bg-blue-800';
-  const themeActive = isAdmin ? 'bg-teal-900 font-bold' : 'bg-blue-800 font-bold';
   const themeText = isAdmin ? 'text-teal-800' : 'text-blue-900';
 
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -325,7 +324,7 @@ function DashboardApp({ user, onLogout }) {
   ];
 
   const auditoresData = usuariosDB.map(u => ({
-    nombre: u.nombre.split(' ')[0],
+    nombre: u.nombre ? u.nombre.split(' ')[0] : 'Auditor',
     registros: rawRegistros.filter(r => String(r.usuario_id) === String(u.id)).length
   }));
 
@@ -364,12 +363,12 @@ function DashboardApp({ user, onLogout }) {
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-gray-400 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">{isAdmin ? "Auditores Activos" : "Mis Registros"}</p><h2 className="text-2xl font-extrabold text-gray-700 mt-1">{isAdmin ? stats.auditores : registros.length}</h2></div>
           </div>
 
-          {/* SECCIÓN DE GRÁFICAS (RECHARTS) */}
+          {/* SECCIÓN DE GRÁFICAS */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 lg:col-span-2 flex flex-col justify-between">
               <h3 className="font-bold text-gray-700 text-sm mb-3">Tendencia de Horas: Realizadas vs Compensadas</h3>
               <div className="h-64 w-full">
-                <ResponsiveContainer width="100% " height="100%">
+                <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={tendenciaData}>
                     <XAxis dataKey="mes" stroke="#888888" fontSize={12} />
                     <YAxis stroke="#888888" fontSize={12} />
