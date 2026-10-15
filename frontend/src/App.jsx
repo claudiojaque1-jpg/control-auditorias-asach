@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter } from 'lucide-react';
+import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
@@ -102,6 +102,7 @@ function DashboardApp({ user, onLogout }) {
   const [editingId, setEditingId] = useState(null);
   const [editingEstado, setEditingEstado] = useState('Pendiente');
   const [intervinientes, setIntervinientes] = useState([]);
+  const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
   const [compData, setCompData] = useState({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' });
@@ -537,7 +538,43 @@ function DashboardApp({ user, onLogout }) {
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <header className="bg-white border-b border-gray-100 p-4 flex justify-between items-center shadow-sm">
           <h2 className="text-lg font-bold text-gray-800 capitalize">{activeTab}</h2>
-          <button onClick={() => setShowModal(true)} className="bg-teal-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold hover:bg-teal-800 flex items-center gap-1.5 shadow-sm"><Plus size={16} /> Nuevo Registro</button>
+          <div className="flex items-center gap-3">
+            {/* CAMPANITA DE NOTIFICACIONES */}
+            <div className="relative">
+              <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-full transition">
+                <Bell size={20} />
+                {registros.filter(r => r.estado === 'Pendiente').length > 0 && (
+                  <span className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold">
+                    {registros.filter(r => r.estado === 'Pendiente').length}
+                  </span>
+                )}
+              </button>
+
+              {showNotificationsDropdown && (
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-gray-100 z-50 p-3">
+                  <div className="flex justify-between items-center mb-2 border-b pb-2">
+                    <span className="font-bold text-gray-700 text-xs">Notificaciones / Pendientes</span>
+                    <button onClick={() => setShowNotificationsDropdown(false)} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto space-y-2 text-xs">
+                    {registros.filter(r => r.estado === 'Pendiente').length === 0 ? (
+                      <p className="text-gray-500 text-center py-4">No hay pendientes por revisar.</p>
+                    ) : (
+                      registros.filter(r => r.estado === 'Pendiente').map(r => (
+                        <div key={r.id} className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="font-bold text-yellow-800">{r.auditor || 'Auditor'}</p>
+                          <p className="text-gray-600 truncate">{r.actividad}</p>
+                          <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => setShowModal(true)} className="bg-teal-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold hover:bg-teal-800 flex items-center gap-1.5 shadow-sm"><Plus size={16} /> Nuevo Registro</button>
+          </div>
         </header>
         <div className="p-6">{renderContent()}</div>
       </main>
