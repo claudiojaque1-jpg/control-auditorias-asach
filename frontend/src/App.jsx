@@ -251,6 +251,14 @@ function DashboardApp({ user, onLogout }) {
     const [h, m] = compData.horas.split(':').map(Number);
     const totalMinutos = (h * 60) + (m || 0);
 
+    const uId = Number(compData.usuario_id);
+    let totalGen = 0, totalComp = 0;
+    rawRegistros.forEach(r => { if(Number(r.usuario_id) === uId && r.estado === 'Aprobado') totalGen += (r.horas_generadas_minutos || 0); });
+    rawCompensaciones.forEach(c => { if(Number(c.usuario_id) === uId) totalComp += (c.horas_compensadas_minutos || 0); });
+    const saldoRealMinutos = totalGen - totalComp;
+
+    if (totalMinutos > saldoRealMinutos) return alert(`⚠️ Las horas a descontar superan el saldo pendiente de este auditor (${formatTime(saldoRealMinutos)} hrs disponibles).`);
+
     await fetch(`${API_URL}/api/compensaciones`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...compData, horas_compensadas_minutos: totalMinutos })
     });
@@ -448,7 +456,7 @@ function DashboardApp({ user, onLogout }) {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
                 <div className="p-3.5 border-b border-gray-100 bg-gray-50"><h3 className="font-bold text-gray-800">Historial General de Trabajos</h3></div>
                 <table className="w-full text-left border-collapse">
-                    <thead><tr className="bg-white border-b text-gray-500"><th className="p-3">Fecha</th>{isAdmin && <th className="p-3">Auditor</th>}<th className="p-3">Actividad</th><th className="p-3">Horas</th><th className="p-3">Estado</th></tr></thead>
+                    <thead><tr className="bg-white border-b text-gray-500"><th className="p-3">Fecha</th>{isAdmin && <th className="p-3">Auditor</th>}<th className="p-3">Actividad</th><th className="p-3">Horas</th><th className="p-3">Estado</th><th className="p-3 text-center">Acciones</th></tr></thead>
                     <tbody>
                     {rawRegistros.map(r => (
                         <tr key={r.id} className="border-b hover:bg-gray-50">
@@ -457,6 +465,10 @@ function DashboardApp({ user, onLogout }) {
                             <td className="p-3">{r.actividad}</td>
                             <td className="p-3 font-bold">{formatTime(r.horas_generadas_minutos)}</td>
                             <td className="p-3">{renderBadgeEstado(r.estado)}</td>
+                            <td className="p-3 flex justify-center gap-2">
+                                <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600" title="Ver Detalle"><Eye size={16} /></button>
+                                {isAdmin && r.estado === 'Pendiente' && (<><button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px]">Autorizar</button><button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px]">Rechazar</button></>)}
+                            </td>
                         </tr>
                     ))}
                     </tbody>
@@ -531,7 +543,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
         <div className="p-4 border-t border-teal-700/50 flex items-center justify-between text-xs">
           <div><p className="font-bold">{user.nombre}</p><p className="text-[11px] text-teal-200">{user.rol}</p></div>
-          <button onClick={onLogout} className="p-2 hover:bg-teal-900 rounded-lg text-teal-200 hover:text-white transition"><LogOut size={16} /></button>
+          <button onClick={onLogout} className="p-2 hover:bg-teal-900 rounded-lg text-teal-200 hover:text-white transition" title="Cerrar Sesión"><LogOut size={16} /></button>
         </div>
       </aside>
 
@@ -543,28 +555,36 @@ function DashboardApp({ user, onLogout }) {
             <div className="relative">
               <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-full transition">
                 <Bell size={20} />
-                {registros.filter(r => r.estado === 'Pendiente').length > 0 && (
+                {rawRegistros.filter(r => r.estado === 'Pendiente').length > 0 && (
                   <span className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold">
-                    {registros.filter(r => r.estado === 'Pendiente').length}
+                    {rawRegistros.filter(r => r.estado === 'Pendiente').length}
                   </span>
                 )}
               </button>
 
               {showNotificationsDropdown && (
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-gray-100 z-50 p-3">
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-100 z-50 p-3">
                   <div className="flex justify-between items-center mb-2 border-b pb-2">
-                    <span className="font-bold text-gray-700 text-xs">Notificaciones / Pendientes</span>
+                    <span className="font-bold text-gray-700 text-xs">Solicitudes Pendientes</span>
                     <button onClick={() => setShowNotificationsDropdown(false)} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
                   </div>
                   <div className="max-h-60 overflow-y-auto space-y-2 text-xs">
-                    {registros.filter(r => r.estado === 'Pendiente').length === 0 ? (
-                      <p className="text-gray-500 text-center py-4">No hay pendientes por revisar.</p>
+                    {rawRegistros.filter(r => r.estado === 'Pendiente').length === 0 ? (
+                      <p className="text-gray-500 text-center py-4">No hay solicitudes pendientes.</p>
                     ) : (
-                      registros.filter(r => r.estado === 'Pendiente').map(r => (
-                        <div key={r.id} className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <p className="font-bold text-yellow-800">{r.auditor || 'Auditor'}</p>
-                          <p className="text-gray-600 truncate">{r.actividad}</p>
-                          <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                      rawRegistros.filter(r => r.estado === 'Pendiente').map(r => (
+                        <div key={r.id} className="p-2.5 bg-yellow-50 border border-yellow-200 rounded-lg space-y-1">
+                          <div className="flex justify-between font-bold text-yellow-800">
+                            <span>{r.auditor || 'Auditor'}</span>
+                            <span className="text-[10px] font-normal text-gray-500">{r.fecha}</span>
+                          </div>
+                          <p className="text-gray-600 text-[11px] truncate">{r.actividad}</p>
+                          {isAdmin && (
+                            <div className="flex gap-2 pt-1">
+                              <button onClick={() => { cambiarEstado(r.id, 'Autorizado'); setShowNotificationsDropdown(false); }} className="bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">Autorizar</button>
+                              <button onClick={() => { cambiarEstado(r.id, 'Rechazado'); setShowNotificationsDropdown(false); }} className="bg-red-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">Rechazar</button>
+                            </div>
+                          )}
                         </div>
                       ))
                     )}
@@ -574,6 +594,7 @@ function DashboardApp({ user, onLogout }) {
             </div>
 
             <button onClick={() => setShowModal(true)} className="bg-teal-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold hover:bg-teal-800 flex items-center gap-1.5 shadow-sm"><Plus size={16} /> Nuevo Registro</button>
+            <button onClick={onLogout} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition" title="Cerrar Sesión"><LogOut size={18} /></button>
           </div>
         </header>
         <div className="p-6">{renderContent()}</div>
@@ -596,6 +617,45 @@ function DashboardApp({ user, onLogout }) {
                 <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold">Guardar</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL REGISTRAR COMPENSACIÓN */}
+      {showModalComp && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-4">
+            <h3 className="font-bold text-base text-gray-800">Registrar Compensación (Descuento de Horas)</h3>
+            <form onSubmit={handleCompSubmit} className="space-y-3">
+              <div>
+                <label className="font-medium">Seleccionar Auditor</label>
+                <select required value={compData.usuario_id} onChange={e => setCompData({...compData, usuario_id: e.target.value})} className="w-full border rounded p-2 bg-gray-50">
+                  <option value="">-- Seleccione Auditor --</option>
+                  {usuariosDB.map(u => (<option key={u.id} value={u.id}>{u.nombre}</option>))}
+                </select>
+              </div>
+              <div><label className="font-medium">Fecha</label><input type="date" required value={compData.fecha} onChange={e => setCompData({...compData, fecha: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
+              <div><label className="font-medium">Horas a Descontar (Ej: 02:00)</label><input type="text" placeholder="HH:MM" required value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
+              <div><label className="font-medium">Motivo</label><input type="text" value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowModalComp(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
+                <button type="submit" className="px-3 py-1.5 bg-green-600 text-white rounded font-bold">Registrar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETALLE */}
+      {registroDetalle && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3">
+            <h3 className="font-bold text-base text-gray-800">Detalle del Trabajo</h3>
+            <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
+            <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
+            <p><strong>Actividad:</strong> {registroDetalle.actividad}</p>
+            <p><strong>Horas:</strong> {formatTime(registroDetalle.horas_generadas_minutos)}</p>
+            <div className="flex justify-end pt-3"><button onClick={() => setRegistroDetalle(null)} className="px-4 py-2 bg-gray-200 rounded-lg font-medium">Cerrar</button></div>
           </div>
         </div>
       )}
