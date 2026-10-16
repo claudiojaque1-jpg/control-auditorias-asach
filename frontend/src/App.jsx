@@ -87,7 +87,7 @@ function DashboardApp({ user, onLogout }) {
   const [compensaciones, setCompensaciones] = useState([]);
   const [usuariosDB, setUsuariosDB] = useState([]);
 
-  const [dashFiltroAnio, setDashFiltroAnio] = useState('todos');
+  const [dashFiltroAnio, setDashFiltroAnio] = useState('2026');
   const [dashFiltroMes, setDashFiltroMes] = useState('todos');
   const [dashFiltroUsuario, setDashFiltroUsuario] = useState('todos');
 
@@ -316,26 +316,48 @@ function DashboardApp({ user, onLogout }) {
       }
   };
 
-  // Datos para Recharts
-  const tendenciaData = [
-    { mes: 'Ene', Realizadas: 12, Compensadas: 10 },
-    { mes: 'Feb', Realizadas: 19, Compensadas: 15 },
-    { mes: 'Mar', Realizadas: 15, Compensadas: 12 },
-    { mes: 'Abr', Realizadas: 25, Compensadas: 20 },
-    { mes: 'May', Realizadas: 22, Compensadas: 18 },
-    { mes: 'Jun', Realizadas: 30, Compensadas: 25 },
-    { mes: 'Jul', Realizadas: 28, Compensadas: 24 },
-    { mes: 'Ago', Realizadas: 35, Compensadas: 30 },
-    { mes: 'Sep', Realizadas: 32, Compensadas: 28 },
-    { mes: 'Oct', Realizadas: Math.round(stats.generadas / 60) || 10, Compensadas: Math.round(stats.compensadas / 60) || 5 }
-  ];
+  // CÁLCULO DINÁMICO DE TENDENCIA MES A MES DESDE LA BASE DE DATOS
+  const mesesNombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const tendenciaData = mesesNombres.map((mes, index) => {
+    const numMes = String(index + 1).padStart(2, '0');
+
+    // Filtrar horas aprobadas ejecutadas en este mes
+    let totalRealizadoMin = 0;
+    registros.forEach(r => {
+      if (r.fecha && r.fecha.substring(5,7) === numMes && (r.estado === 'Aprobado' || r.estado === 'Autorizado')) {
+        totalRealizadoMin += (r.horas_generadas_minutos || 0);
+      }
+    });
+
+    // Filtrar horas compensadas en este mes
+    let totalCompensadoMin = 0;
+    compensaciones.forEach(c => {
+      if (c.fecha && c.fecha.substring(5,7) === numMes) {
+        totalCompensadoMin += (c.horas_compensadas_minutos || 0);
+      }
+    });
+
+    return {
+      mes,
+      Realizadas: Number((totalRealizadoMin / 60).toFixed(1)),
+      Compensadas: Number((totalCompensadoMin / 60).toFixed(1))
+    };
+  });
+
+  // CÁLCULO REAL DE DISTRIBUCIÓN POR ESTADO
+  const cantAprobadas = registros.filter(r => r.estado === 'Aprobado').length;
+  const cantPendientes = registros.filter(r => r.estado === 'Pendiente').length;
+  const cantAutorizadas = registros.filter(r => r.estado === 'Autorizado').length;
+  const cantRechazadas = registros.filter(r => r.estado === 'Rechazado').length;
 
   const estadoData = [
-    { name: 'Aprobadas', value: registros.filter(r => r.estado === 'Aprobado').length || 1, color: '#10b981' },
-    { name: 'Pendientes', value: registros.filter(r => r.estado === 'Pendiente').length || 1, color: '#f59e0b' },
-    { name: 'Autorizadas', value: registros.filter(r => r.estado === 'Autorizado').length || 1, color: '#3b82f6' }
-  ];
+    { name: 'Aprobadas', value: cantAprobadas, color: '#10b981' },
+    { name: 'Pendientes', value: cantPendientes, color: '#f59e0b' },
+    { name: 'Autorizadas', value: cantAutorizadas, color: '#3b82f6' },
+    ...(cantRechazadas > 0 ? [{ name: 'Rechazadas', value: cantRechazadas, color: '#ef4444' }] : [])
+  ].filter(d => d.value > 0);
 
+  // CARGA DE TRABAJO REAL POR AUDITOR
   const auditoresData = usuariosDB.map(u => ({
     nombre: u.nombre ? u.nombre.split(' ')[0] : 'Auditor',
     registros: rawRegistros.filter(r => String(r.usuario_id) === String(u.id)).length
@@ -381,16 +403,16 @@ function DashboardApp({ user, onLogout }) {
           {/* SECCIÓN DE GRÁFICAS */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 lg:col-span-2 flex flex-col justify-between">
-              <h3 className="font-bold text-gray-700 text-sm mb-3">Tendencia de Horas: Realizadas vs Compensadas</h3>
+              <h3 className="font-bold text-gray-700 text-sm mb-3">Tendencia de Horas Reales (por Mes en Hrs)</h3>
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={tendenciaData}>
                     <XAxis dataKey="mes" stroke="#888888" fontSize={12} />
                     <YAxis stroke="#888888" fontSize={12} />
-                    <RechartsTooltip />
+                    <RechartsTooltip formatter={(value) => [`${value} hrs`, '']} />
                     <Legend />
-                    <Line type="monotone" dataKey="Realizadas" stroke="#059669" strokeWidth={2} />
-                    <Line type="monotone" dataKey="Compensadas" stroke="#3b82f6" strokeWidth={2} />
+                    <Line type="monotone" dataKey="Realizadas" stroke="#059669" strokeWidth={2} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="Compensadas" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -399,14 +421,18 @@ function DashboardApp({ user, onLogout }) {
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
               <h3 className="font-bold text-gray-700 text-sm mb-3">Distribución por Estado</h3>
               <div className="h-64 w-full flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={estadoData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} fill="#8884d8" label>
-                      {estadoData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
-                    </Pie>
-                    <RechartsTooltip />
-                  </PieChart>
-                </ResponsiveContainer>
+                {estadoData.length === 0 ? (
+                  <p className="text-gray-400 text-xs">Sin datos registrados</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={estadoData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} fill="#8884d8" label={({ name, value }) => `${name}: ${value}`}>
+                        {estadoData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
+                      </Pie>
+                      <RechartsTooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
           </div>
@@ -577,7 +603,7 @@ function DashboardApp({ user, onLogout }) {
             <p className="text-xs text-gray-400">Sistema de Control de Auditorías de remesa ASACh</p>
           </div>
           <div className="flex items-center gap-3">
-            {/* CAMPANITA DE NOTIFICACIONES RESTAURADA */}
+            {/* CAMPANITA DE NOTIFICACIONES */}
             <div className="relative">
               <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="relative p-2 text-gray-600 bg-amber-50 hover:bg-amber-100 rounded-full transition shadow-sm">
                 <Bell size={20} className="text-amber-600" />
