@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight, Check } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
@@ -227,11 +227,16 @@ function DashboardApp({ user, onLogout }) {
     return min2 - min1;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e, marcarFinalizado = false) => {
+    if (e) e.preventDefault();
     const minutos = (formData.hora_inicio && formData.hora_termino) ? calcularMinutos() : 0;
+
     let nuevoEstado = editingEstado;
-    if (editingEstado === 'Autorizado' && minutos > 0) nuevoEstado = 'Aprobado';
+    if (marcarFinalizado) {
+        nuevoEstado = 'Aprobado'; // Pasa a aprobado o listo para que cuente las horas
+    } else if (editingEstado === 'Autorizado' && minutos > 0) {
+        nuevoEstado = 'Aprobado';
+    }
 
     const payload = { ...formData, horas_generadas_minutos: minutos, usuario_id: user.id, intervinientes, estado: nuevoEstado };
 
@@ -306,13 +311,13 @@ function DashboardApp({ user, onLogout }) {
   const renderBadgeEstado = (estado) => {
       switch(estado) {
           case 'Aprobado':
-              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-green-100 text-green-800">Aprobado</span>;
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-green-100 text-green-800 whitespace-nowrap">Aprobado</span>;
           case 'Autorizado':
-              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800">Autorizado (Pendiente de Ejecución)</span>;
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap">Autorizado (Pendiente de Ejecución)</span>;
           case 'Rechazado':
-              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800">Rechazado</span>;
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800 whitespace-nowrap">Rechazado</span>;
           default:
-              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-yellow-100 text-yellow-800">Pendiente Autorización</span>;
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-yellow-100 text-yellow-800 whitespace-nowrap">Pendiente Autorización</span>;
       }
   };
 
@@ -320,8 +325,6 @@ function DashboardApp({ user, onLogout }) {
   const mesesNombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const tendenciaData = mesesNombres.map((mes, index) => {
     const numMes = String(index + 1).padStart(2, '0');
-
-    // Filtrar horas aprobadas ejecutadas en este mes
     let totalRealizadoMin = 0;
     registros.forEach(r => {
       if (r.fecha && r.fecha.substring(5,7) === numMes && (r.estado === 'Aprobado' || r.estado === 'Autorizado')) {
@@ -329,7 +332,6 @@ function DashboardApp({ user, onLogout }) {
       }
     });
 
-    // Filtrar horas compensadas en este mes
     let totalCompensadoMin = 0;
     compensaciones.forEach(c => {
       if (c.fecha && c.fecha.substring(5,7) === numMes) {
@@ -344,7 +346,6 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
-  // CÁLCULO REAL DE DISTRIBUCIÓN POR ESTADO
   const cantAprobadas = registros.filter(r => r.estado === 'Aprobado').length;
   const cantPendientes = registros.filter(r => r.estado === 'Pendiente').length;
   const cantAutorizadas = registros.filter(r => r.estado === 'Autorizado').length;
@@ -357,7 +358,6 @@ function DashboardApp({ user, onLogout }) {
     ...(cantRechazadas > 0 ? [{ name: 'Rechazadas', value: cantRechazadas, color: '#ef4444' }] : [])
   ].filter(d => d.value > 0);
 
-  // CARGA DE TRABAJO REAL POR AUDITOR
   const auditoresData = usuariosDB.map(u => ({
     nombre: u.nombre ? u.nombre.split(' ')[0] : 'Auditor',
     registros: rawRegistros.filter(r => String(r.usuario_id) === String(u.id)).length
@@ -458,19 +458,35 @@ function DashboardApp({ user, onLogout }) {
             <div className="p-3.5 border-b border-gray-100 bg-gray-50"><h3 className="font-bold text-gray-800 text-xs">Trabajos Registrados (Filtrados)</h3></div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
-                <thead><tr className="bg-white border-b text-gray-500"><th className="p-3">Fecha / Horario Propuesto</th>{isAdmin && <th className="p-3">Auditor</th>}<th className="p-3">Actividad Propuesta</th><th className="p-3">Horas Realizadas</th><th className="p-3">Estado</th><th className="p-3 text-center">Acción</th></tr></thead>
+                <thead>
+                  <tr className="bg-white border-b text-gray-500">
+                    <th className="p-3 whitespace-nowrap">Fecha / Horario Propuesto</th>
+                    {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
+                    <th className="p-3">Actividad Propuesta</th>
+                    <th className="p-3 whitespace-nowrap">Horas Realizadas</th>
+                    <th className="p-3 whitespace-nowrap">Estado</th>
+                    <th className="p-3 text-center whitespace-nowrap">Acción</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {registros.length === 0 ? (<tr><td colSpan="6" className="p-4 text-center text-gray-500">No hay registros para este filtro</td></tr>) : registros.map(r => (
                     <tr key={r.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3"><div className="font-medium text-gray-800">{r.fecha}</div><div className="text-[11px] text-gray-500">{r.hora_inicio && r.hora_termino ? `⏰ ${r.hora_inicio} a ${r.hora_termino}` : 'Sin horario'}</div></td>
-                      {isAdmin && <td className="p-3 font-medium">{r.auditor}</td>}
+                      <td className="p-3 whitespace-nowrap"><div className="font-medium text-gray-800">{r.fecha}</div><div className="text-[11px] text-gray-500">{r.hora_inicio && r.hora_termino ? `⏰ ${r.hora_inicio} a ${r.hora_termino}` : 'Sin horario'}</div></td>
+                      {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
                       <td className="p-3 truncate max-w-xs">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" />}</td>
-                      <td className="p-3 font-bold text-gray-700">{formatTime(r.horas_generadas_minutos)}</td>
-                      <td className="p-3">{renderBadgeEstado(r.estado)}</td>
-                      <td className="p-3 flex justify-center gap-2 items-center">
+                      <td className="p-3 font-bold text-gray-700 whitespace-nowrap">{formatTime(r.horas_generadas_minutos)}</td>
+                      <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
+                      <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
                           <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600 transition" title="Ver Detalle"><Eye size={16} /></button>
 
-                          {(isAdmin || r.estado === 'Autorizado' || r.estado === 'Pendiente') && (
+                          {/* SI ESTÁ AUTORIZADO, EL AUDITOR PUEDE EJECUTARLO Y FINALIZARLO */}
+                          {r.estado === 'Autorizado' && (
+                            <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition shadow-sm" title="Rellenar informe y finalizar">
+                              <Check size={14} /> Ejecutar / Finalizar
+                            </button>
+                          )}
+
+                          {(isAdmin || r.estado === 'Pendiente') && (
                             <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
                           )}
 
@@ -499,29 +515,45 @@ function DashboardApp({ user, onLogout }) {
         return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
                 <div className="p-3.5 border-b border-gray-100 bg-gray-50"><h3 className="font-bold text-gray-800">Historial General de Trabajos</h3></div>
-                <table className="w-full text-left border-collapse">
-                    <thead><tr className="bg-white border-b text-gray-500"><th className="p-3">Fecha</th>{isAdmin && <th className="p-3">Auditor</th>}<th className="p-3">Actividad</th><th className="p-3">Horas</th><th className="p-3">Estado</th><th className="p-3 text-center">Acción</th></tr></thead>
-                    <tbody>
-                    {rawRegistros.map(r => (
-                        <tr key={r.id} className="border-b hover:bg-gray-50">
-                            <td className="p-3">{r.fecha}</td>
-                            {isAdmin && <td className="p-3 font-medium">{r.auditor}</td>}
-                            <td className="p-3">{r.actividad}</td>
-                            <td className="p-3 font-bold">{formatTime(r.horas_generadas_minutos)}</td>
-                            <td className="p-3">{renderBadgeEstado(r.estado)}</td>
-                            <td className="p-3 flex justify-center gap-2 items-center">
-                                <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600" title="Ver Detalle"><Eye size={16} /></button>
-                                {isAdmin && r.estado === 'Pendiente' && (
-                                  <>
-                                    <button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Autorizar</button>
-                                    <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-red-200">Rechazar</button>
-                                  </>
-                                )}
-                            </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-white border-b text-gray-500">
+                          <th className="p-3 whitespace-nowrap">Fecha</th>
+                          {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
+                          <th className="p-3">Actividad</th>
+                          <th className="p-3 whitespace-nowrap">Horas</th>
+                          <th className="p-3 whitespace-nowrap">Estado</th>
+                          <th className="p-3 text-center whitespace-nowrap">Acción</th>
                         </tr>
-                    ))}
-                    </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                      {rawRegistros.map(r => (
+                          <tr key={r.id} className="border-b hover:bg-gray-50">
+                              <td className="p-3 whitespace-nowrap">{r.fecha}</td>
+                              {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
+                              <td className="p-3">{r.actividad}</td>
+                              <td className="p-3 font-bold whitespace-nowrap">{formatTime(r.horas_generadas_minutos)}</td>
+                              <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
+                              <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
+                                  <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600" title="Ver Detalle"><Eye size={16} /></button>
+                                  {r.estado === 'Autorizado' && (
+                                    <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1">
+                                      <Check size={14} /> Ejecutar
+                                    </button>
+                                  )}
+                                  {isAdmin && r.estado === 'Pendiente' && (
+                                    <>
+                                      <button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Autorizar</button>
+                                      <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-red-200">Rechazar</button>
+                                    </>
+                                  )}
+                              </td>
+                          </tr>
+                      ))}
+                      </tbody>
+                  </table>
+                </div>
             </div>
         );
     }
@@ -534,14 +566,28 @@ function DashboardApp({ user, onLogout }) {
             {isAdmin && <button onClick={() => setShowModalComp(true)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 flex gap-1.5 items-center"><Plus size={16} /> Registrar Compensación</button>}
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
-            <table className="w-full text-left border-collapse">
-              <thead><tr className="bg-white border-b text-gray-500"><th className="p-3">Fecha</th>{isAdmin && <th className="p-3">Auditor</th>}<th className="p-3">Motivo</th><th className="p-3">Horas</th></tr></thead>
-              <tbody>
-                {compensaciones.map(c => (
-                  <tr key={c.id} className="border-b hover:bg-gray-50"><td className="p-3">{c.fecha}</td>{isAdmin && <td className="p-3 font-medium">{c.auditor}</td>}<td className="p-3">{c.motivo}</td><td className="p-3 font-bold text-red-600">-{formatTime(c.horas_compensadas_minutos).replace('-', '')}</td></tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-white border-b text-gray-500">
+                    <th className="p-3 whitespace-nowrap">Fecha</th>
+                    {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
+                    <th className="p-3">Motivo</th>
+                    <th className="p-3 whitespace-nowrap">Horas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {compensaciones.map(c => (
+                    <tr key={c.id} className="border-b hover:bg-gray-50">
+                      <td className="p-3 whitespace-nowrap">{c.fecha}</td>
+                      {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{c.auditor}</td>}
+                      <td className="p-3">{c.motivo}</td>
+                      <td className="p-3 font-bold text-red-600 whitespace-nowrap">-{formatTime(c.horas_compensadas_minutos).replace('-', '')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       );
@@ -555,20 +601,30 @@ function DashboardApp({ user, onLogout }) {
             <button onClick={abrirCreacionUsuario} className={`${themeBg} text-white px-3 py-1.5 rounded-lg text-xs font-medium ${themeHover} flex gap-1.5 items-center`}><UserPlus size={16} /> Nuevo Usuario</button>
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
-            <table className="w-full text-left border-collapse">
-              <thead><tr className="bg-white border-b text-gray-500"><th className="p-3">Nombre</th><th className="p-3">Correo</th><th className="p-3">Cargo</th><th className="p-3">Rol</th><th className="p-3 text-center">Acción</th></tr></thead>
-              <tbody>
-                {usuariosDB.map(u => (
-                  <tr key={u.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 font-medium">{u.nombre}</td>
-                    <td className="p-3">{u.email}</td>
-                    <td className="p-3">{u.cargo}</td>
-                    <td className="p-3"><span className="bg-gray-100 px-2 py-0.5 rounded font-bold">{u.rol}</span></td>
-                    <td className="p-3 text-center"><button onClick={() => abrirEdicionUsuario(u)} className="text-blue-600 hover:underline">Editar</button></td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-white border-b text-gray-500">
+                    <th className="p-3 whitespace-nowrap">Nombre</th>
+                    <th className="p-3 whitespace-nowrap">Correo</th>
+                    <th className="p-3 whitespace-nowrap">Cargo</th>
+                    <th className="p-3 whitespace-nowrap">Rol</th>
+                    <th className="p-3 text-center whitespace-nowrap">Acción</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {usuariosDB.map(u => (
+                    <tr key={u.id} className="border-b hover:bg-gray-50">
+                      <td className="p-3 font-medium whitespace-nowrap">{u.nombre}</td>
+                      <td className="p-3 whitespace-nowrap">{u.email}</td>
+                      <td className="p-3 whitespace-nowrap">{u.cargo}</td>
+                      <td className="p-3 whitespace-nowrap"><span className="bg-gray-100 px-2 py-0.5 rounded font-bold">{u.rol}</span></td>
+                      <td className="p-3 text-center whitespace-nowrap"><button onClick={() => abrirEdicionUsuario(u)} className="text-blue-600 hover:underline">Editar</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       );
@@ -663,27 +719,40 @@ function DashboardApp({ user, onLogout }) {
               )}
             </div>
 
-            <button onClick={() => setShowModal(true)} className="bg-yellow-400 hover:bg-yellow-500 text-teal-900 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition">+ NUEVA PROPUESTA</button>
+            <button onClick={() => { setEditingId(null); setFormData({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento }); setShowModal(true); }} className="bg-yellow-400 hover:bg-yellow-500 text-teal-900 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition">+ NUEVA PROPUESTA</button>
           </div>
         </header>
         <div className="p-6">{renderContent()}</div>
       </main>
 
-      {/* MODAL NUEVO / EDITAR */}
+      {/* MODAL NUEVO / EJECUTAR / EDITAR */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
-            <h3 className="font-bold text-base mb-4 text-gray-800">{editingId ? 'Editar Registro' : 'Nueva Propuesta de Horas'}</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <h3 className="font-bold text-base mb-4 text-gray-800">
+              {editingId ? (editingEstado === 'Autorizado' ? 'Ejecutar e Informar Trabajo' : 'Editar Registro') : 'Nueva Propuesta de Horas'}
+            </h3>
+            <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
               <div><label className="block font-medium mb-1">Fecha</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block font-medium mb-1">Hora Inicio</label><input type="time" value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
-                <div><label className="block font-medium mb-1">Hora Término</label><input type="time" value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
+                <div><label className="block font-medium mb-1">Hora Inicio</label><input type="time" required value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
+                <div><label className="block font-medium mb-1">Hora Término</label><input type="time" required value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
               </div>
-              <div><label className="block font-medium mb-1">Actividad Realizada / Propuesta</label><textarea rows="3" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa la auditoría..."></textarea></div>
-              <div className="flex justify-end gap-2 pt-3">
+              <div>
+                <label className="block font-medium mb-1">
+                  {editingEstado === 'Autorizado' ? 'Informe Detallado de la Actividad Ejecutada' : 'Actividad Realizada / Propuesta'}
+                </label>
+                <textarea rows="4" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa el informe de la auditoría..."></textarea>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold">Guardar</button>
+                <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold">Guardar Cambios</button>
+                {editingEstado === 'Autorizado' && (
+                  <button type="button" onClick={(e) => handleSubmit(e, true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1.5 shadow">
+                    <Check size={16} /> Finalizar Trabajo
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -723,7 +792,7 @@ function DashboardApp({ user, onLogout }) {
             <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
             <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
             <p><strong>Horario:</strong> {registroDetalle.hora_inicio && registroDetalle.hora_termino ? `${registroDetalle.hora_inicio} - ${registroDetalle.hora_termino}` : 'Sin horario'}</p>
-            <p><strong>Actividad:</strong> {registroDetalle.actividad}</p>
+            <p><strong>Actividad / Informe:</strong> {registroDetalle.actividad}</p>
             <p><strong>Estado Actual:</strong> {renderBadgeEstado(registroDetalle.estado)}</p>
 
             {isAdmin && registroDetalle.estado === 'Pendiente' && (
