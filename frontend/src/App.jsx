@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell } from 'lucide-react';
+import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
@@ -305,10 +305,14 @@ function DashboardApp({ user, onLogout }) {
 
   const renderBadgeEstado = (estado) => {
       switch(estado) {
-          case 'Aprobado': return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-green-100 text-green-800">Aprobado</span>;
-          case 'Autorizado': return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800">Autorizado</span>;
-          case 'Rechazado': return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800">Rechazado</span>;
-          default: return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-yellow-100 text-yellow-800">Pendiente</span>;
+          case 'Aprobado':
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-green-100 text-green-800">Aprobado</span>;
+          case 'Autorizado':
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800">Autorizado (Pendiente de Ejecución)</span>;
+          case 'Rechazado':
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800">Rechazado</span>;
+          default:
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-yellow-100 text-yellow-800">Pendiente Autorización</span>;
       }
   };
 
@@ -336,6 +340,8 @@ function DashboardApp({ user, onLogout }) {
     nombre: u.nombre ? u.nombre.split(' ')[0] : 'Auditor',
     registros: rawRegistros.filter(r => String(r.usuario_id) === String(u.id)).length
   }));
+
+  const solicitudesPendientes = rawRegistros.filter(r => r.estado === 'Pendiente');
 
   const menuClass = (tab) => `flex items-center gap-2.5 p-2.5 w-full rounded-lg transition text-left text-xs ${activeTab === tab ? (isAdmin ? 'bg-teal-900 font-bold' : 'bg-blue-800 font-bold') : (isAdmin ? 'hover:bg-teal-900' : 'hover:bg-blue-800')}`;
 
@@ -435,11 +441,23 @@ function DashboardApp({ user, onLogout }) {
                       <td className="p-3 truncate max-w-xs">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" />}</td>
                       <td className="p-3 font-bold text-gray-700">{formatTime(r.horas_generadas_minutos)}</td>
                       <td className="p-3">{renderBadgeEstado(r.estado)}</td>
-                      <td className="p-3 flex justify-center gap-2">
+                      <td className="p-3 flex justify-center gap-2 items-center">
                           <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600 transition" title="Ver Detalle"><Eye size={16} /></button>
-                          {(isAdmin || r.estado === 'Autorizado' || r.estado === 'Pendiente') && (<button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>)}
-                          {isAdmin && r.estado === 'Pendiente' && (<><button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px]">Autorizar</button><button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px]">Rechazar</button></>)}
-                          {isAdmin && r.estado === 'Autorizado' && r.horas_generadas_minutos > 0 && (<button onClick={() => cambiarEstado(r.id, 'Aprobado')} className="text-green-600"><CheckCircle size={16} /></button>)}
+
+                          {(isAdmin || r.estado === 'Autorizado' || r.estado === 'Pendiente') && (
+                            <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
+                          )}
+
+                          {isAdmin && r.estado === 'Pendiente' && (
+                            <>
+                              <button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">Autorizar</button>
+                              <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded text-[11px] font-medium transition">Rechazar</button>
+                            </>
+                          )}
+
+                          {isAdmin && r.estado === 'Autorizado' && (
+                            <button onClick={() => cambiarEstado(r.id, 'Aprobado')} className="text-green-600 hover:text-green-800 transition" title="Aprobar Horas Ejecutadas"><CheckCircle size={16} /></button>
+                          )}
                       </td>
                     </tr>
                   ))}
@@ -456,7 +474,7 @@ function DashboardApp({ user, onLogout }) {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
                 <div className="p-3.5 border-b border-gray-100 bg-gray-50"><h3 className="font-bold text-gray-800">Historial General de Trabajos</h3></div>
                 <table className="w-full text-left border-collapse">
-                    <thead><tr className="bg-white border-b text-gray-500"><th className="p-3">Fecha</th>{isAdmin && <th className="p-3">Auditor</th>}<th className="p-3">Actividad</th><th className="p-3">Horas</th><th className="p-3">Estado</th><th className="p-3 text-center">Acciones</th></tr></thead>
+                    <thead><tr className="bg-white border-b text-gray-500"><th className="p-3">Fecha</th>{isAdmin && <th className="p-3">Auditor</th>}<th className="p-3">Actividad</th><th className="p-3">Horas</th><th className="p-3">Estado</th><th className="p-3 text-center">Acción</th></tr></thead>
                     <tbody>
                     {rawRegistros.map(r => (
                         <tr key={r.id} className="border-b hover:bg-gray-50">
@@ -465,9 +483,14 @@ function DashboardApp({ user, onLogout }) {
                             <td className="p-3">{r.actividad}</td>
                             <td className="p-3 font-bold">{formatTime(r.horas_generadas_minutos)}</td>
                             <td className="p-3">{renderBadgeEstado(r.estado)}</td>
-                            <td className="p-3 flex justify-center gap-2">
+                            <td className="p-3 flex justify-center gap-2 items-center">
                                 <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600" title="Ver Detalle"><Eye size={16} /></button>
-                                {isAdmin && r.estado === 'Pendiente' && (<><button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px]">Autorizar</button><button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px]">Rechazar</button></>)}
+                                {isAdmin && r.estado === 'Pendiente' && (
+                                  <>
+                                    <button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Autorizar</button>
+                                    <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-red-200">Rechazar</button>
+                                  </>
+                                )}
                             </td>
                         </tr>
                     ))}
@@ -532,69 +555,89 @@ function DashboardApp({ user, onLogout }) {
         <div>
           <div className="p-5 border-b border-teal-700/50 flex items-center gap-3">
             <img src={LOGO_URL} alt="Logo" className="w-10 h-10 object-contain bg-white rounded-lg p-1" />
-            <div><h1 className="font-bold text-sm leading-tight">CONTROL AUDITORÍAS</h1><span className="text-[10px] text-teal-200">Remesas ASACh</span></div>
+            <div><h1 className="font-bold text-sm leading-tight">AUDITORÍAS ASACh</h1><span className="text-[10px] text-teal-200">Panel de Administración</span></div>
           </div>
           <nav className="p-3 space-y-1">
-            <button onClick={() => setActiveTab('dashboard')} className={menuClass('dashboard')}><LayoutDashboard size={18} /> Dashboard</button>
-            <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><FileText size={18} /> Historial Trabajos</button>
+            <button onClick={() => setActiveTab('dashboard')} className={menuClass('dashboard')}><LayoutDashboard size={18} /> Dashboard Visual</button>
+            <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><FileText size={18} /> Tablas de Registros</button>
             <button onClick={() => setActiveTab('compensaciones')} className={menuClass('compensaciones')}><Clock size={18} /> Compensaciones</button>
             {isAdmin && <button onClick={() => setActiveTab('usuarios')} className={menuClass('usuarios')}><Users size={18} /> Usuarios</button>}
           </nav>
         </div>
         <div className="p-4 border-t border-teal-700/50 flex items-center justify-between text-xs">
           <div><p className="font-bold">{user.nombre}</p><p className="text-[11px] text-teal-200">{user.rol}</p></div>
-          <button onClick={onLogout} className="p-2 hover:bg-teal-900 rounded-lg text-teal-200 hover:text-white transition" title="Cerrar Sesión"><LogOut size={16} /></button>
+          <button onClick={onLogout} className="p-2 hover:bg-teal-900 rounded-lg text-teal-200 hover:text-white transition flex items-center gap-1" title="Cerrar Sesión"><LogOut size={16} /> Cerrar Sesión</button>
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <header className="bg-white border-b border-gray-100 p-4 flex justify-between items-center shadow-sm">
-          <h2 className="text-lg font-bold text-gray-800 capitalize">{activeTab}</h2>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Hola, {user.nombre ? user.nombre.split(' ')[0] : 'Usuario'}</h2>
+            <p className="text-xs text-gray-400">Sistema de Control de Auditorías de remesa ASACh</p>
+          </div>
           <div className="flex items-center gap-3">
-            {/* CAMPANITA DE NOTIFICACIONES */}
+            {/* CAMPANITA DE NOTIFICACIONES RESTAURADA */}
             <div className="relative">
-              <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-full transition">
-                <Bell size={20} />
-                {rawRegistros.filter(r => r.estado === 'Pendiente').length > 0 && (
-                  <span className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold">
-                    {rawRegistros.filter(r => r.estado === 'Pendiente').length}
+              <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="relative p-2 text-gray-600 bg-amber-50 hover:bg-amber-100 rounded-full transition shadow-sm">
+                <Bell size={20} className="text-amber-600" />
+                {solicitudesPendientes.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-amber-500 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center font-bold shadow">
+                    {solicitudesPendientes.length}
                   </span>
                 )}
               </button>
 
               {showNotificationsDropdown && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-100 z-50 p-3">
-                  <div className="flex justify-between items-center mb-2 border-b pb-2">
-                    <span className="font-bold text-gray-700 text-xs">Solicitudes Pendientes</span>
-                    <button onClick={() => setShowNotificationsDropdown(false)} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                <div className="absolute right-0 mt-2 w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
+                  <div className="bg-teal-800 text-white p-3.5 flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Bell size={16} />
+                      <span className="font-bold text-xs">Solicitudes por Autorizar</span>
+                    </div>
+                    {solicitudesPendientes.length > 0 && (
+                      <span className="bg-amber-400 text-teal-900 font-bold text-[10px] px-2 py-0.5 rounded-full">
+                        {solicitudesPendientes.length} nuevas
+                      </span>
+                    )}
                   </div>
-                  <div className="max-h-60 overflow-y-auto space-y-2 text-xs">
-                    {rawRegistros.filter(r => r.estado === 'Pendiente').length === 0 ? (
-                      <p className="text-gray-500 text-center py-4">No hay solicitudes pendientes.</p>
+
+                  <div className="max-h-80 overflow-y-auto p-3 space-y-2.5 bg-gray-50">
+                    {solicitudesPendientes.length === 0 ? (
+                      <p className="text-gray-400 text-center py-6 text-xs font-medium">No hay solicitudes pendientes por autorizar.</p>
                     ) : (
-                      rawRegistros.filter(r => r.estado === 'Pendiente').map(r => (
-                        <div key={r.id} className="p-2.5 bg-yellow-50 border border-yellow-200 rounded-lg space-y-1">
-                          <div className="flex justify-between font-bold text-yellow-800">
-                            <span>{r.auditor || 'Auditor'}</span>
-                            <span className="text-[10px] font-normal text-gray-500">{r.fecha}</span>
+                      solicitudesPendientes.map(r => (
+                        <div
+                          key={r.id}
+                          onClick={() => { verDetallesRegistro(r.id); setShowNotificationsDropdown(false); }}
+                          className="p-3 bg-white hover:bg-teal-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
+                        >
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{r.motivo || 'Auditoría'}</span>
+                            <span className="text-[10px] text-gray-400">{r.fecha}</span>
                           </div>
-                          <p className="text-gray-600 text-[11px] truncate">{r.actividad}</p>
-                          {isAdmin && (
-                            <div className="flex gap-2 pt-1">
-                              <button onClick={() => { cambiarEstado(r.id, 'Autorizado'); setShowNotificationsDropdown(false); }} className="bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">Autorizar</button>
-                              <button onClick={() => { cambiarEstado(r.id, 'Rechazado'); setShowNotificationsDropdown(false); }} className="bg-red-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">Rechazar</button>
-                            </div>
-                          )}
+                          <p className="font-bold text-gray-800 text-xs">{r.auditor || 'Lucas Ortiz'}</p>
+                          <p className="text-[11px] text-gray-500 mt-0.5">⏰ Horario propuesto: {r.hora_inicio && r.hora_termino ? `${r.hora_inicio} - ${r.hora_termino}` : 'Por definir'}</p>
+                          <p className="text-[11px] text-gray-600 truncate mt-1 bg-gray-50 p-1.5 rounded">{r.actividad}</p>
+                          <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-teal-600 transition" />
                         </div>
                       ))
                     )}
+                  </div>
+
+                  <div className="p-2.5 bg-white border-t text-center">
+                    <button
+                      onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }}
+                      className="text-xs font-bold text-teal-800 hover:text-teal-900 transition"
+                    >
+                      Ver todas en el panel principal
+                    </button>
                   </div>
                 </div>
               )}
             </div>
 
-            <button onClick={() => setShowModal(true)} className="bg-teal-700 text-white px-3.5 py-2 rounded-lg text-xs font-bold hover:bg-teal-800 flex items-center gap-1.5 shadow-sm"><Plus size={16} /> Nuevo Registro</button>
-            <button onClick={onLogout} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition" title="Cerrar Sesión"><LogOut size={18} /></button>
+            <button onClick={() => setShowModal(true)} className="bg-yellow-400 hover:bg-yellow-500 text-teal-900 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition">+ NUEVA PROPUESTA</button>
           </div>
         </header>
         <div className="p-6">{renderContent()}</div>
@@ -604,14 +647,14 @@ function DashboardApp({ user, onLogout }) {
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
-            <h3 className="font-bold text-base mb-4 text-gray-800">{editingId ? 'Editar Registro' : 'Nuevo Registro de Horas'}</h3>
+            <h3 className="font-bold text-base mb-4 text-gray-800">{editingId ? 'Editar Registro' : 'Nueva Propuesta de Horas'}</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div><label className="block font-medium mb-1">Fecha</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block font-medium mb-1">Hora Inicio</label><input type="time" value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
                 <div><label className="block font-medium mb-1">Hora Término</label><input type="time" value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
               </div>
-              <div><label className="block font-medium mb-1">Actividad Realizada</label><textarea rows="3" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa la auditoría..."></textarea></div>
+              <div><label className="block font-medium mb-1">Actividad Realizada / Propuesta</label><textarea rows="3" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa la auditoría..."></textarea></div>
               <div className="flex justify-end gap-2 pt-3">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button>
                 <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold">Guardar</button>
@@ -646,16 +689,27 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL DETALLE */}
+      {/* MODAL DETALLE / ACCIÓN RÁPIDA */}
       {registroDetalle && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3">
-            <h3 className="font-bold text-base text-gray-800">Detalle del Trabajo</h3>
+            <h3 className="font-bold text-base text-gray-800">Detalle del Trabajo Propuesto</h3>
             <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
             <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
+            <p><strong>Horario:</strong> {registroDetalle.hora_inicio && registroDetalle.hora_termino ? `${registroDetalle.hora_inicio} - ${registroDetalle.hora_termino}` : 'Sin horario'}</p>
             <p><strong>Actividad:</strong> {registroDetalle.actividad}</p>
-            <p><strong>Horas:</strong> {formatTime(registroDetalle.horas_generadas_minutos)}</p>
-            <div className="flex justify-end pt-3"><button onClick={() => setRegistroDetalle(null)} className="px-4 py-2 bg-gray-200 rounded-lg font-medium">Cerrar</button></div>
+            <p><strong>Estado Actual:</strong> {renderBadgeEstado(registroDetalle.estado)}</p>
+
+            {isAdmin && registroDetalle.estado === 'Pendiente' && (
+              <div className="flex gap-2 pt-3 border-t mt-3">
+                <button onClick={() => cambiarEstado(registroDetalle.id, 'Autorizado')} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold">Autorizar Propuesta</button>
+                <button onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')} className="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold">Rechazar</button>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button onClick={() => setRegistroDetalle(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium">Cerrar</button>
+            </div>
           </div>
         </div>
       )}
