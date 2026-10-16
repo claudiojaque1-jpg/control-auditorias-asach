@@ -233,8 +233,8 @@ function DashboardApp({ user, onLogout }) {
 
     let nuevoEstado = editingEstado;
     if (marcarFinalizado) {
-        nuevoEstado = 'Aprobado'; // Pasa a aprobado o listo para que cuente las horas
-    } else if (editingEstado === 'Autorizado' && minutos > 0) {
+        nuevoEstado = 'Aprobado';
+    } else if (editingEstado === 'Autorizado' && minutos > 0 && !isAdmin) {
         nuevoEstado = 'Aprobado';
     }
 
@@ -479,14 +479,14 @@ function DashboardApp({ user, onLogout }) {
                       <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
                           <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600 transition" title="Ver Detalle"><Eye size={16} /></button>
 
-                          {/* SI ESTÁ AUTORIZADO, EL AUDITOR PUEDE EJECUTARLO Y FINALIZARLO */}
-                          {r.estado === 'Autorizado' && (
+                          {/* SOLO EL AUDITOR VE LA OPCIÓN DE EJECUTAR EN SUS REGISTROS AUTORIZADOS */}
+                          {!isAdmin && r.estado === 'Autorizado' && String(r.usuario_id) === String(user.id) && (
                             <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition shadow-sm" title="Rellenar informe y finalizar">
                               <Check size={14} /> Ejecutar / Finalizar
                             </button>
                           )}
 
-                          {(isAdmin || r.estado === 'Pendiente') && (
+                          {(!isAdmin && r.estado === 'Pendiente') && (
                             <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
                           )}
 
@@ -498,7 +498,7 @@ function DashboardApp({ user, onLogout }) {
                           )}
 
                           {isAdmin && r.estado === 'Autorizado' && (
-                            <button onClick={() => cambiarEstado(r.id, 'Aprobado')} className="text-green-600 hover:text-green-800 transition" title="Aprobar Horas Ejecutadas"><CheckCircle size={16} /></button>
+                            <button onClick={() => cambiarEstado(r.id, 'Aprobado')} className="text-green-600 hover:text-green-800 transition flex items-center gap-1 font-medium text-[11px]" title="Aprobar Horas Ejecutadas"><CheckCircle size={16} /> Aprobar</button>
                           )}
                       </td>
                     </tr>
@@ -537,16 +537,23 @@ function DashboardApp({ user, onLogout }) {
                               <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
                               <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
                                   <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600" title="Ver Detalle"><Eye size={16} /></button>
-                                  {r.estado === 'Autorizado' && (
+
+                                  {/* SOLO EL AUDITOR TIENE EL BOTÓN EJECUTAR */}
+                                  {!isAdmin && r.estado === 'Autorizado' && String(r.usuario_id) === String(user.id) && (
                                     <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1">
                                       <Check size={14} /> Ejecutar
                                     </button>
                                   )}
+
                                   {isAdmin && r.estado === 'Pendiente' && (
                                     <>
                                       <button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Autorizar</button>
                                       <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-red-200">Rechazar</button>
                                     </>
+                                  )}
+
+                                  {isAdmin && r.estado === 'Autorizado' && (
+                                    <button onClick={() => cambiarEstado(r.id, 'Aprobado')} className="text-green-600 hover:text-green-800 transition flex items-center gap-1 font-medium text-[11px]" title="Aprobar Horas Ejecutadas"><CheckCircle size={16} /> Aprobar</button>
                                   )}
                               </td>
                           </tr>
@@ -730,7 +737,7 @@ function DashboardApp({ user, onLogout }) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
             <h3 className="font-bold text-base mb-4 text-gray-800">
-              {editingId ? (editingEstado === 'Autorizado' ? 'Ejecutar e Informar Trabajo' : 'Editar Registro') : 'Nueva Propuesta de Horas'}
+              {editingId ? (!isAdmin && editingEstado === 'Autorizado' ? 'Ejecutar e Informar Trabajo' : 'Editar Registro') : 'Nueva Propuesta de Horas'}
             </h3>
             <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
               <div><label className="block font-medium mb-1">Fecha</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
@@ -740,7 +747,7 @@ function DashboardApp({ user, onLogout }) {
               </div>
               <div>
                 <label className="block font-medium mb-1">
-                  {editingEstado === 'Autorizado' ? 'Informe Detallado de la Actividad Ejecutada' : 'Actividad Realizada / Propuesta'}
+                  {!isAdmin && editingEstado === 'Autorizado' ? 'Informe Detallado de la Actividad Ejecutada' : 'Actividad Realizada / Propuesta'}
                 </label>
                 <textarea rows="4" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa el informe de la auditoría..."></textarea>
               </div>
@@ -748,7 +755,7 @@ function DashboardApp({ user, onLogout }) {
               <div className="flex justify-end gap-2 pt-3 border-t">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button>
                 <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold">Guardar Cambios</button>
-                {editingEstado === 'Autorizado' && (
+                {!isAdmin && editingEstado === 'Autorizado' && (
                   <button type="button" onClick={(e) => handleSubmit(e, true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1.5 shadow">
                     <Check size={16} /> Finalizar Trabajo
                   </button>
@@ -799,6 +806,14 @@ function DashboardApp({ user, onLogout }) {
               <div className="flex gap-2 pt-3 border-t mt-3">
                 <button onClick={() => cambiarEstado(registroDetalle.id, 'Autorizado')} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold">Autorizar Propuesta</button>
                 <button onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')} className="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold">Rechazar</button>
+              </div>
+            )}
+
+            {isAdmin && registroDetalle.estado === 'Autorizado' && (
+              <div className="pt-3 border-t mt-3">
+                <button onClick={() => cambiarEstado(registroDetalle.id, 'Aprobado')} className="w-full bg-green-600 text-white py-2 rounded-lg font-bold flex justify-center items-center gap-1.5">
+                  <CheckCircle size={16} /> Aprobar Horas Ejecutadas
+                </button>
               </div>
             )}
 
