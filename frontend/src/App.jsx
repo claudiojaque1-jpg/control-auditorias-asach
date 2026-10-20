@@ -108,7 +108,7 @@ function DashboardApp({ user, onLogout }) {
   const [compData, setCompData] = useState({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' });
 
   const [editingUserId, setEditingUserId] = useState(null);
-  const [userData, setUserData] = useState({ nombre: '', email: '', password: '', confirmPassword: '', cargo: '', departamento: '', rol: 'Auditor' });
+  const [userData, setUserData] = useState({ nombre: '', email: '', password: '', confirmPassword: '', departamento: '', rol: 'Auditor' });
   const [userError, setUserError] = useState('');
 
   const queryParams = `?userId=${user.id}&rol=${user.rol}`;
@@ -248,7 +248,6 @@ function DashboardApp({ user, onLogout }) {
     fetchData();
   };
 
-  // CÁLCULO DE HORAS DISPONIBLES / PENDIENTES A COMPENSAR PARA EL AUDITOR SELECCIONADO
   const obtenerSaldoAuditorSeleccionado = (uId) => {
     if (!uId) return 0;
     const numId = Number(uId);
@@ -280,9 +279,21 @@ function DashboardApp({ user, onLogout }) {
 
     if (totalMinutos > saldoRealMinutos) return alert(`⚠️ Las horas a descontar superan el saldo pendiente de este auditor (${formatTime(saldoRealMinutos)} hrs disponibles).`);
 
-    await fetch(`${API_URL}/api/compensaciones`, {
+    const res = await fetch(`${API_URL}/api/compensaciones`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...compData, horas_compensadas_minutos: totalMinutos })
     });
+
+    if (res.ok) {
+      // OBTENER CORREO / USERNAME DEL USUARIO SELECCIONADO PARA LA NOTIFICACIÓN
+      const usuarioDestino = usuariosDB.find(u => String(u.id) === String(compData.usuario_id));
+      if (usuarioDestino && usuarioDestino.email) {
+        const asunto = encodeURIComponent("Notificación de Compensación Registrada - Remesas ASACh");
+        const cuerpo = encodeURIComponent(`Hola ${usuarioDestino.nombre},\n\nSe ha registrado una compensación de horas en tu cuenta:\n\n📅 Fecha: ${compData.fecha}\n⏰ Horas descontadas: ${compData.horas} hrs\n📌 Motivo: ${compData.motivo}\n\nSaldo restante disponible: ${formatTime(saldoRealMinutos - totalMinutos)} hrs.\n\nSaludos,\nAdministración de Remesas ASACh`);
+
+        // Abre el cliente de correo predeterminado del sistema con el correo del usuario
+        window.open(`mailto:${usuarioDestino.email}?subject=${asunto}&body=${cuerpo}`, '_blank');
+      }
+    }
 
     setShowModalComp(false); setCompData({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' }); fetchData();
   };
@@ -290,14 +301,14 @@ function DashboardApp({ user, onLogout }) {
   const abrirCreacionUsuario = () => {
     setUserError('');
     setEditingUserId(null);
-    setUserData({ nombre: '', email: '', password: '', confirmPassword: '', cargo: '', departamento: '', rol: 'Auditor' });
+    setUserData({ nombre: '', email: '', password: '', confirmPassword: '', departamento: '', rol: 'Auditor' });
     setShowModalUser(true);
   };
 
   const abrirEdicionUsuario = (u) => {
     setUserError('');
     setEditingUserId(u.id);
-    setUserData({ nombre: u.nombre, email: u.email, password: '', confirmPassword: '', cargo: u.cargo || '', departamento: u.departamento || '', rol: u.rol || 'Auditor' });
+    setUserData({ nombre: u.nombre, email: u.email, password: '', confirmPassword: '', departamento: u.departamento || '', rol: u.rol || 'Auditor' });
     setShowModalUser(true);
   };
 
@@ -312,7 +323,7 @@ function DashboardApp({ user, onLogout }) {
     try {
         const url = editingUserId ? `${API_URL}/api/usuarios/${editingUserId}` : `${API_URL}/api/usuarios`;
         const method = editingUserId ? 'PUT' : 'POST';
-        const payload = { nombre: userData.nombre, email: userData.email, cargo: userData.cargo, departamento: userData.departamento, rol: userData.rol };
+        const payload = { nombre: userData.nombre, email: userData.email, departamento: userData.departamento, rol: userData.rol };
         if (userData.password) payload.password = userData.password;
 
         const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -338,7 +349,18 @@ function DashboardApp({ user, onLogout }) {
       }
   };
 
-  // CÁLCULO DINÁMICO DE TENDENCIA MES A MES DESDE LA BASE DE DATOS
+  // ASIGNACIÓN DE DIVERSIFICACIÓN DE COLORES SEGÚN EL ROL DEL USUARIO
+  const renderBadgeRol = (rol) => {
+    switch (rol) {
+      case 'Administrador':
+        return <span className="bg-purple-100 text-purple-800 px-2.5 py-1 rounded-full font-bold text-[11px]">Administrador</span>;
+      case 'Analista':
+        return <span className="bg-blue-100 text-blue-800 px-2.5 py-1 rounded-full font-bold text-[11px]">Analista</span>;
+      default:
+        return <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-bold text-[11px]">Auditor</span>;
+    }
+  };
+
   const mesesNombres = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const tendenciaData = mesesNombres.map((mes, index) => {
     const numMes = String(index + 1).padStart(2, '0');
@@ -621,7 +643,6 @@ function DashboardApp({ user, onLogout }) {
                   <tr className="bg-white border-b text-gray-500">
                     <th className="p-3 whitespace-nowrap">Nombre</th>
                     <th className="p-3 whitespace-nowrap">Correo</th>
-                    <th className="p-3 whitespace-nowrap">Cargo</th>
                     <th className="p-3 whitespace-nowrap">Rol</th>
                     <th className="p-3 text-center whitespace-nowrap">Acción</th>
                   </tr>
@@ -631,9 +652,8 @@ function DashboardApp({ user, onLogout }) {
                     <tr key={u.id} className="border-b hover:bg-gray-50">
                       <td className="p-3 font-medium whitespace-nowrap">{u.nombre}</td>
                       <td className="p-3 whitespace-nowrap">{u.email}</td>
-                      <td className="p-3 whitespace-nowrap">{u.cargo}</td>
-                      <td className="p-3 whitespace-nowrap"><span className="bg-gray-100 px-2 py-0.5 rounded font-bold">{u.rol}</span></td>
-                      <td className="p-3 text-center whitespace-nowrap"><button onClick={() => abrirEdicionUsuario(u)} className="text-blue-600 hover:underline">Editar</button></td>
+                      <td className="p-3 whitespace-nowrap">{renderBadgeRol(u.rol)}</td>
+                      <td className="p-3 text-center whitespace-nowrap"><button onClick={() => abrirEdicionUsuario(u)} className="text-blue-600 hover:underline font-medium">Editar</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -773,7 +793,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL REGISTRAR COMPENSACIÓN (CON MUESTRA DE HORAS PENDIENTES) */}
+      {/* MODAL REGISTRAR COMPENSACIÓN */}
       {showModalComp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-4">
@@ -787,7 +807,6 @@ function DashboardApp({ user, onLogout }) {
                 </select>
               </div>
 
-              {/* MUESTRA DINÁMICA DE HORAS DISPONIBLES AL FILTRAR POR AUDITOR */}
               {compData.usuario_id && (
                 <div className={`p-3 rounded-xl border flex items-center justify-between ${obtenerSaldoAuditorSeleccionado(compData.usuario_id) > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
                   <div className="flex items-center gap-2">
@@ -803,7 +822,7 @@ function DashboardApp({ user, onLogout }) {
               <div><label className="font-medium">Motivo</label><input type="text" value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowModalComp(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
-                <button type="submit" className="px-3 py-1.5 bg-green-600 text-white rounded font-bold">Registrar</button>
+                <button type="submit" className="px-3 py-1.5 bg-green-600 text-white rounded font-bold">Registrar y Notificar</button>
               </div>
             </form>
           </div>
@@ -835,7 +854,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL USUARIO */}
+      {/* MODAL CREAR / EDITAR USUARIO (SIN CAMPO CARGO Y CON ROL ANALISTA) */}
       {showModalUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-4">
@@ -844,10 +863,16 @@ function DashboardApp({ user, onLogout }) {
             <form onSubmit={handleUserSubmit} className="space-y-3">
               <div><label className="font-medium">Nombre</label><input type="text" required value={userData.nombre} onChange={e => setUserData({...userData, nombre: e.target.value})} className="w-full border rounded p-2" /></div>
               <div><label className="font-medium">Correo</label><input type="email" required value={userData.email} onChange={e => setUserData({...userData, email: e.target.value})} className="w-full border rounded p-2" /></div>
-              <div><label className="font-medium">Contraseña</label><input type="password" value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded p-2" /></div>
-              <div><label className="font-medium">Confirmar Contraseña</label><input type="password" value={userData.confirmPassword} onChange={e => setUserData({...userData, confirmPassword: e.target.value})} className="w-full border rounded p-2" /></div>
-              <div><label className="font-medium">Cargo</label><input type="text" value={userData.cargo} onChange={e => setUserData({...userData, cargo: e.target.value})} className="w-full border rounded p-2" /></div>
-              <div><label className="font-medium">Rol</label><select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded p-2"><option value="Auditor">Auditor</option><option value="Administrador">Administrador</option></select></div>
+              <div><label className="font-medium">Contraseña</label><input type="password" value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded p-2" placeholder="Dejar en blanco para conservar contraseña" /></div>
+              <div><label className="font-medium">Confirmar Contraseña</label><input type="password" value={userData.confirmPassword} onChange={e => setUserData({...userData, confirmPassword: e.target.value})} className="w-full border rounded p-2" placeholder="Confirmar contraseña" /></div>
+              <div>
+                <label className="font-medium">Rol</label>
+                <select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded p-2 bg-gray-50">
+                  <option value="Auditor">Auditor</option>
+                  <option value="Analista">Analista</option>
+                  <option value="Administrador">Administrador</option>
+                </select>
+              </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowModalUser(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
                 <button type="submit" className="px-3 py-1.5 bg-teal-700 text-white rounded font-bold">Guardar</button>
