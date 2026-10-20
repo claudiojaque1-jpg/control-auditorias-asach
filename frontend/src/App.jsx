@@ -233,7 +233,7 @@ function DashboardApp({ user, onLogout }) {
 
     let nuevoEstado = editingEstado;
     if (marcarFinalizado) {
-        nuevoEstado = 'Ejecutado'; // Pasa a estado Ejecutado cuando el analista finaliza el trabajo aprobado
+        nuevoEstado = 'Ejecutado';
     }
 
     const payload = { ...formData, horas_generadas_minutos: minutos, usuario_id: user.id, intervinientes, estado: nuevoEstado };
@@ -248,17 +248,35 @@ function DashboardApp({ user, onLogout }) {
     fetchData();
   };
 
+  // CÁLCULO DE HORAS DISPONIBLES / PENDIENTES A COMPENSAR PARA EL AUDITOR SELECCIONADO
+  const obtenerSaldoAuditorSeleccionado = (uId) => {
+    if (!uId) return 0;
+    const numId = Number(uId);
+    let totalEjecutado = 0;
+    let totalCompensado = 0;
+
+    rawRegistros.forEach(r => {
+      if (Number(r.usuario_id) === numId && (r.estado === 'Ejecutado' || r.estado === 'Aprobado')) {
+        totalEjecutado += (r.horas_generadas_minutos || 0);
+      }
+    });
+
+    rawCompensaciones.forEach(c => {
+      if (Number(c.usuario_id) === numId) {
+        totalCompensado += (c.horas_compensadas_minutos || 0);
+      }
+    });
+
+    return totalEjecutado - totalCompensado;
+  };
+
   const handleCompSubmit = async (e) => {
     e.preventDefault();
     if(!compData.usuario_id) return alert("Por favor, seleccione el auditor.");
     const [h, m] = compData.horas.split(':').map(Number);
     const totalMinutos = (h * 60) + (m || 0);
 
-    const uId = Number(compData.usuario_id);
-    let totalGen = 0, totalComp = 0;
-    rawRegistros.forEach(r => { if(Number(r.usuario_id) === uId && (r.estado === 'Ejecutado' || r.estado === 'Aprobado')) totalGen += (r.horas_generadas_minutos || 0); });
-    rawCompensaciones.forEach(c => { if(Number(c.usuario_id) === uId) totalComp += (c.horas_compensadas_minutos || 0); });
-    const saldoRealMinutos = totalGen - totalComp;
+    const saldoRealMinutos = obtenerSaldoAuditorSeleccionado(compData.usuario_id);
 
     if (totalMinutos > saldoRealMinutos) return alert(`⚠️ Las horas a descontar superan el saldo pendiente de este auditor (${formatTime(saldoRealMinutos)} hrs disponibles).`);
 
@@ -478,7 +496,6 @@ function DashboardApp({ user, onLogout }) {
                       <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
                           <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600 transition" title="Ver Detalle"><Eye size={16} /></button>
 
-                          {/* EL ANALISTA PUEDE EJECUTAR SI ESTÁ APROBADO PENDIENTE DE EJECUCIÓN */}
                           {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
                             <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition shadow-sm" title="Rellenar informe y finalizar">
                               <Check size={14} /> Finalizar
@@ -489,7 +506,6 @@ function DashboardApp({ user, onLogout }) {
                             <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
                           )}
 
-                          {/* EL ADMIN APRUEBA O RECHAZA LA PROPUESTA INICIAL */}
                           {isAdmin && r.estado === 'Pendiente' && (
                             <>
                               <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">Aprobar</button>
@@ -757,7 +773,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL REGISTRAR COMPENSACIÓN */}
+      {/* MODAL REGISTRAR COMPENSACIÓN (CON MUESTRA DE HORAS PENDIENTES) */}
       {showModalComp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-4">
@@ -770,6 +786,18 @@ function DashboardApp({ user, onLogout }) {
                   {usuariosDB.map(u => (<option key={u.id} value={u.id}>{u.nombre}</option>))}
                 </select>
               </div>
+
+              {/* MUESTRA DINÁMICA DE HORAS DISPONIBLES AL FILTRAR POR AUDITOR */}
+              {compData.usuario_id && (
+                <div className={`p-3 rounded-xl border flex items-center justify-between ${obtenerSaldoAuditorSeleccionado(compData.usuario_id) > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={16} />
+                    <span className="font-medium">Horas pendientes a compensar:</span>
+                  </div>
+                  <span className="text-sm font-extrabold">{formatTime(obtenerSaldoAuditorSeleccionado(compData.usuario_id))} hrs</span>
+                </div>
+              )}
+
               <div><label className="font-medium">Fecha</label><input type="date" required value={compData.fecha} onChange={e => setCompData({...compData, fecha: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
               <div><label className="font-medium">Horas a Descontar (Ej: 02:00)</label><input type="text" placeholder="HH:MM" required value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
               <div><label className="font-medium">Motivo</label><input type="text" value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
