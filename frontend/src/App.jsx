@@ -161,8 +161,8 @@ function DashboardApp({ user, onLogout }) {
 
       let genMin = 0, compMin = 0, porAprobarMin = 0;
       regsFiltradas.forEach(r => {
-          if (r.estado === 'Aprobado') genMin += (r.horas_generadas_minutos || 0);
-          if (r.estado === 'Pendiente' || r.estado === 'Autorizado') porAprobarMin += (r.horas_generadas_minutos || 0);
+          if (r.estado === 'Ejecutado' || r.estado === 'Aprobado') genMin += (r.horas_generadas_minutos || 0);
+          if (r.estado === 'Pendiente' || r.estado === 'Aprobado (Pendiente de Ejecución)') porAprobarMin += (r.horas_generadas_minutos || 0);
       });
       compsFiltradas.forEach(c => {
           compMin += (c.horas_compensadas_minutos || 0);
@@ -233,9 +233,7 @@ function DashboardApp({ user, onLogout }) {
 
     let nuevoEstado = editingEstado;
     if (marcarFinalizado) {
-        nuevoEstado = 'Aprobado';
-    } else if (editingEstado === 'Autorizado' && minutos > 0 && !isAdmin) {
-        nuevoEstado = 'Aprobado';
+        nuevoEstado = 'Ejecutado'; // Pasa a estado Ejecutado cuando el analista finaliza el trabajo aprobado
     }
 
     const payload = { ...formData, horas_generadas_minutos: minutos, usuario_id: user.id, intervinientes, estado: nuevoEstado };
@@ -258,7 +256,7 @@ function DashboardApp({ user, onLogout }) {
 
     const uId = Number(compData.usuario_id);
     let totalGen = 0, totalComp = 0;
-    rawRegistros.forEach(r => { if(Number(r.usuario_id) === uId && r.estado === 'Aprobado') totalGen += (r.horas_generadas_minutos || 0); });
+    rawRegistros.forEach(r => { if(Number(r.usuario_id) === uId && (r.estado === 'Ejecutado' || r.estado === 'Aprobado')) totalGen += (r.horas_generadas_minutos || 0); });
     rawCompensaciones.forEach(c => { if(Number(c.usuario_id) === uId) totalComp += (c.horas_compensadas_minutos || 0); });
     const saldoRealMinutos = totalGen - totalComp;
 
@@ -310,10 +308,11 @@ function DashboardApp({ user, onLogout }) {
 
   const renderBadgeEstado = (estado) => {
       switch(estado) {
-          case 'Aprobado':
-              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-green-100 text-green-800 whitespace-nowrap">Aprobado</span>;
+          case 'Ejecutado':
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-green-100 text-green-800 whitespace-nowrap">Ejecutado</span>;
+          case 'Aprobado (Pendiente de Ejecución)':
           case 'Autorizado':
-              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap">Autorizado (Pendiente de Ejecución)</span>;
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap">Aprobado (Pendiente de Ejecución)</span>;
           case 'Rechazado':
               return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800 whitespace-nowrap">Rechazado</span>;
           default:
@@ -327,7 +326,7 @@ function DashboardApp({ user, onLogout }) {
     const numMes = String(index + 1).padStart(2, '0');
     let totalRealizadoMin = 0;
     registros.forEach(r => {
-      if (r.fecha && r.fecha.substring(5,7) === numMes && (r.estado === 'Aprobado' || r.estado === 'Autorizado')) {
+      if (r.fecha && r.fecha.substring(5,7) === numMes && (r.estado === 'Ejecutado')) {
         totalRealizadoMin += (r.horas_generadas_minutos || 0);
       }
     });
@@ -346,15 +345,15 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
-  const cantAprobadas = registros.filter(r => r.estado === 'Aprobado').length;
+  const cantEjecutadas = registros.filter(r => r.estado === 'Ejecutado').length;
   const cantPendientes = registros.filter(r => r.estado === 'Pendiente').length;
-  const cantAutorizadas = registros.filter(r => r.estado === 'Autorizado').length;
+  const cantAprobadasPendientes = registros.filter(r => r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado').length;
   const cantRechazadas = registros.filter(r => r.estado === 'Rechazado').length;
 
   const estadoData = [
-    { name: 'Aprobadas', value: cantAprobadas, color: '#10b981' },
+    { name: 'Ejecutadas', value: cantEjecutadas, color: '#10b981' },
     { name: 'Pendientes', value: cantPendientes, color: '#f59e0b' },
-    { name: 'Autorizadas', value: cantAutorizadas, color: '#3b82f6' },
+    { name: 'Aprobadas (Pend. Ejecución)', value: cantAprobadasPendientes, color: '#3b82f6' },
     ...(cantRechazadas > 0 ? [{ name: 'Rechazadas', value: cantRechazadas, color: '#ef4444' }] : [])
   ].filter(d => d.value > 0);
 
@@ -393,7 +392,7 @@ function DashboardApp({ user, onLogout }) {
 
           {/* Tarjetas de Métricas Superiores */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-emerald-500 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">Aprobadas</p><h2 className={`text-2xl font-extrabold mt-1 ${themeText}`}>{formatTime(stats.generadas)}</h2></div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-emerald-500 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">Ejecutadas</p><h2 className={`text-2xl font-extrabold mt-1 ${themeText}`}>{formatTime(stats.generadas)}</h2></div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-blue-500 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">Compensadas</p><h2 className="text-2xl font-extrabold text-blue-600 mt-1">{formatTime(stats.compensadas)}</h2></div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-indigo-500 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">Saldo (A favor)</p><h2 className="text-2xl font-extrabold text-indigo-600 mt-1">{formatTime(stats.pendientes)}</h2></div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-amber-500 flex flex-col justify-between"><p className="text-amber-700 text-xs font-semibold uppercase">En Propuesta</p><h2 className="text-2xl font-extrabold text-amber-500 mt-1">{registros.filter(r => r.estado === 'Pendiente').length}</h2></div>
@@ -479,10 +478,10 @@ function DashboardApp({ user, onLogout }) {
                       <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
                           <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600 transition" title="Ver Detalle"><Eye size={16} /></button>
 
-                          {/* SOLO EL AUDITOR VE LA OPCIÓN DE EJECUTAR EN SUS REGISTROS AUTORIZADOS */}
-                          {!isAdmin && r.estado === 'Autorizado' && String(r.usuario_id) === String(user.id) && (
+                          {/* EL ANALISTA PUEDE EJECUTAR SI ESTÁ APROBADO PENDIENTE DE EJECUCIÓN */}
+                          {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
                             <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition shadow-sm" title="Rellenar informe y finalizar">
-                              <Check size={14} /> Ejecutar / Finalizar
+                              <Check size={14} /> Finalizar
                             </button>
                           )}
 
@@ -490,15 +489,12 @@ function DashboardApp({ user, onLogout }) {
                             <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
                           )}
 
+                          {/* EL ADMIN APRUEBA O RECHAZA LA PROPUESTA INICIAL */}
                           {isAdmin && r.estado === 'Pendiente' && (
                             <>
-                              <button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">Autorizar</button>
+                              <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">Aprobar</button>
                               <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded text-[11px] font-medium transition">Rechazar</button>
                             </>
-                          )}
-
-                          {isAdmin && r.estado === 'Autorizado' && (
-                            <button onClick={() => cambiarEstado(r.id, 'Aprobado')} className="text-green-600 hover:text-green-800 transition flex items-center gap-1 font-medium text-[11px]" title="Aprobar Horas Ejecutadas"><CheckCircle size={16} /> Aprobar</button>
                           )}
                       </td>
                     </tr>
@@ -538,22 +534,17 @@ function DashboardApp({ user, onLogout }) {
                               <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
                                   <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600" title="Ver Detalle"><Eye size={16} /></button>
 
-                                  {/* SOLO EL AUDITOR TIENE EL BOTÓN EJECUTAR */}
-                                  {!isAdmin && r.estado === 'Autorizado' && String(r.usuario_id) === String(user.id) && (
+                                  {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
                                     <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1">
-                                      <Check size={14} /> Ejecutar
+                                      <Check size={14} /> Finalizar
                                     </button>
                                   )}
 
                                   {isAdmin && r.estado === 'Pendiente' && (
                                     <>
-                                      <button onClick={() => cambiarEstado(r.id, 'Autorizado')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Autorizar</button>
+                                      <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
                                       <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-red-200">Rechazar</button>
                                     </>
-                                  )}
-
-                                  {isAdmin && r.estado === 'Autorizado' && (
-                                    <button onClick={() => cambiarEstado(r.id, 'Aprobado')} className="text-green-600 hover:text-green-800 transition flex items-center gap-1 font-medium text-[11px]" title="Aprobar Horas Ejecutadas"><CheckCircle size={16} /> Aprobar</button>
                                   )}
                               </td>
                           </tr>
@@ -682,7 +673,7 @@ function DashboardApp({ user, onLogout }) {
                   <div className="bg-teal-800 text-white p-3.5 flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <Bell size={16} />
-                      <span className="font-bold text-xs">Solicitudes por Autorizar</span>
+                      <span className="font-bold text-xs">Solicitudes Pendientes</span>
                     </div>
                     {solicitudesPendientes.length > 0 && (
                       <span className="bg-amber-400 text-teal-900 font-bold text-[10px] px-2 py-0.5 rounded-full">
@@ -693,7 +684,7 @@ function DashboardApp({ user, onLogout }) {
 
                   <div className="max-h-80 overflow-y-auto p-3 space-y-2.5 bg-gray-50">
                     {solicitudesPendientes.length === 0 ? (
-                      <p className="text-gray-400 text-center py-6 text-xs font-medium">No hay solicitudes pendientes por autorizar.</p>
+                      <p className="text-gray-400 text-center py-6 text-xs font-medium">No hay solicitudes pendientes por revisar.</p>
                     ) : (
                       solicitudesPendientes.map(r => (
                         <div
@@ -737,7 +728,7 @@ function DashboardApp({ user, onLogout }) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
             <h3 className="font-bold text-base mb-4 text-gray-800">
-              {editingId ? (!isAdmin && editingEstado === 'Autorizado' ? 'Ejecutar e Informar Trabajo' : 'Editar Registro') : 'Nueva Propuesta de Horas'}
+              {editingId ? (!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') ? 'Ejecutar e Informar Trabajo' : 'Editar Registro') : 'Nueva Propuesta de Horas'}
             </h3>
             <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
               <div><label className="block font-medium mb-1">Fecha</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
@@ -747,7 +738,7 @@ function DashboardApp({ user, onLogout }) {
               </div>
               <div>
                 <label className="block font-medium mb-1">
-                  {!isAdmin && editingEstado === 'Autorizado' ? 'Informe Detallado de la Actividad Ejecutada' : 'Actividad Realizada / Propuesta'}
+                  {!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') ? 'Informe Detallado de la Actividad Ejecutada' : 'Actividad Realizada / Propuesta'}
                 </label>
                 <textarea rows="4" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa el informe de la auditoría..."></textarea>
               </div>
@@ -755,9 +746,9 @@ function DashboardApp({ user, onLogout }) {
               <div className="flex justify-end gap-2 pt-3 border-t">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button>
                 <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold">Guardar Cambios</button>
-                {!isAdmin && editingEstado === 'Autorizado' && (
+                {!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') && (
                   <button type="button" onClick={(e) => handleSubmit(e, true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1.5 shadow">
-                    <Check size={16} /> Finalizar Trabajo
+                    <Check size={16} /> Finalizar
                   </button>
                 )}
               </div>
@@ -804,16 +795,8 @@ function DashboardApp({ user, onLogout }) {
 
             {isAdmin && registroDetalle.estado === 'Pendiente' && (
               <div className="flex gap-2 pt-3 border-t mt-3">
-                <button onClick={() => cambiarEstado(registroDetalle.id, 'Autorizado')} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold">Autorizar Propuesta</button>
+                <button onClick={() => cambiarEstado(registroDetalle.id, 'Aprobado (Pendiente de Ejecución)')} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold">Aprobar</button>
                 <button onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')} className="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold">Rechazar</button>
-              </div>
-            )}
-
-            {isAdmin && registroDetalle.estado === 'Autorizado' && (
-              <div className="pt-3 border-t mt-3">
-                <button onClick={() => cambiarEstado(registroDetalle.id, 'Aprobado')} className="w-full bg-green-600 text-white py-2 rounded-lg font-bold flex justify-center items-center gap-1.5">
-                  <CheckCircle size={16} /> Aprobar Horas Ejecutadas
-                </button>
               </div>
             )}
 
