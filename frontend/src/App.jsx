@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
-import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight, Check, Upload } from 'lucide-react';
+import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight, Check, Upload, ExternalLink } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
@@ -102,7 +102,6 @@ function DashboardApp({ user, onLogout }) {
   const [editingId, setEditingId] = useState(null);
   const [editingEstado, setEditingEstado] = useState('Pendiente');
 
-  // ALMACENA EL HORARIO Y MINUTOS ORIGINALES APROBADOS
   const [minutosOriginales, setMinutosOriginales] = useState(0);
   const [horarioOriginal, setHorarioOriginal] = useState({ inicio: '', termino: '' });
 
@@ -247,8 +246,6 @@ function DashboardApp({ user, onLogout }) {
     const minutosNuevos = (formData.hora_inicio && formData.hora_termino) ? calcularMinutos() : 0;
 
     let nuevoEstado = editingEstado;
-
-    // VERIFICA SI SE ALTERÓ EL HORARIO RESPECTO AL APROBADO ORIGINALMENTE
     const horarioAlterado = (formData.hora_inicio !== horarioOriginal.inicio) || (formData.hora_termino !== horarioOriginal.termino);
     const tiempoCambiado = minutosNuevos !== minutosOriginales;
 
@@ -454,7 +451,6 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
-  // LAS SOLICITUDES EN LA CAMPANITA INCLUYEN PENDIENTES Y LAS QUE CAMBIARON SU HORARIO
   const solicitudesPendientes = rawRegistros.filter(r => r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas');
 
   const menuClass = (tab) => `flex items-center gap-2.5 p-2.5 w-full rounded-lg transition text-left text-xs ${activeTab === tab ? (isAdmin ? 'bg-teal-900 font-bold' : 'bg-blue-800 font-bold') : (isAdmin ? 'hover:bg-teal-900' : 'hover:bg-blue-800')}`;
@@ -635,7 +631,7 @@ function DashboardApp({ user, onLogout }) {
                                   {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
                                     <>
                                       <button onClick={() => cambiarEstado(r.id, r.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
-                                      <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-red-200">Rechazar</button>
+                                      <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Rechazar</button>
                                     </>
                                   )}
                               </td>
@@ -920,9 +916,10 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
+      {/* MODAL DETALLE ACTUALIZADO CON VISUALIZACIÓN DE EVIDENCIA */}
       {registroDetalle && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3 max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-base text-gray-800">Detalle del Trabajo Propuesto</h3>
             <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
             <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
@@ -930,6 +927,36 @@ function DashboardApp({ user, onLogout }) {
             <p><strong>Tiempo Total:</strong> {formatTime(registroDetalle.horas_generadas_minutos)} hrs ({registroDetalle.horas_generadas_minutos || 0} min)</p>
             <p><strong>Actividad / Informe:</strong> {registroDetalle.actividad}</p>
             <p><strong>Estado Actual:</strong> {renderBadgeEstado(registroDetalle.estado)}</p>
+
+            {/* SECCIÓN DE EVIDENCIA ADJUNTA EN EL MODAL DE DETALLE */}
+            <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-gray-700 flex items-center gap-1.5">
+                  <Paperclip size={14} className="text-teal-700" /> Evidencia Adjunta:
+                </span>
+                <span className="text-[10px] text-gray-400">
+                  {Number(registroDetalle.tiene_evidencia) > 0 ? 'Archivo disponible' : 'Sin adjunto'}
+                </span>
+              </div>
+
+              {Number(registroDetalle.tiene_evidencia) > 0 ? (
+                <div className="space-y-2">
+                  <div className="bg-white p-2.5 rounded-lg border flex items-center justify-between shadow-sm">
+                    <span className="text-[11px] font-medium text-teal-800 truncate">evidencia_trabajo_adjunta.png</span>
+                    <a
+                      href="#ver-evidencia"
+                      onClick={(e) => { e.preventDefault(); alert("Vista previa o enlace a Google Drive de la evidencia adjunta."); }}
+                      className="text-blue-600 hover:underline flex items-center gap-1 font-bold text-[11px]"
+                    >
+                      Ver Archivo <ExternalLink size={12} />
+                    </a>
+                  </div>
+                  <p className="text-[10px] text-gray-500 italic">💡 Los archivos de respaldo se pueden sincronizar opcionalmente con la carpeta de Google Drive configurada para el área de auditorías.</p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-400 italic">No se ha adjuntado ninguna foto o documento de evidencia para este registro.</p>
+              )}
+            </div>
 
             {isAdmin && (registroDetalle.estado === 'Pendiente' || registroDetalle.estado === 'Revisión por Exceso de Horas') && (
               <div className="flex gap-2 pt-3 border-t mt-3">
