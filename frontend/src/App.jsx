@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight, Check } from 'lucide-react';
+import { HashRouter, Routes, Route } from 'react-router-dom';
+import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight, Check, Upload } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
@@ -101,8 +101,10 @@ function DashboardApp({ user, onLogout }) {
   const [registroDetalle, setRegistroDetalle] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editingEstado, setEditingEstado] = useState('Pendiente');
+  const [minutosOriginales, setMinutosOriginales] = useState(0);
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
+  const [archivoEvidencia, setArchivoEvidencia] = useState(null);
 
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
   const [compData, setCompData] = useState({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' });
@@ -137,6 +139,15 @@ function DashboardApp({ user, onLogout }) {
     }
   };
 
+  // REQUISITO 6: ACTUALIZACIÓN EN TIEMPO REAL VÍA POLLING (CADA 10 SEGUNDOS)
+  useEffect(() => {
+    fetchData();
+    const timer = setInterval(() => {
+      fetchData();
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
   const aplicarFiltrosDashboard = (todosRegs, todasComps, todosUsers) => {
       let regsFiltradas = todosRegs;
       let compsFiltradas = todasComps;
@@ -162,7 +173,7 @@ function DashboardApp({ user, onLogout }) {
       let genMin = 0, compMin = 0, porAprobarMin = 0;
       regsFiltradas.forEach(r => {
           if (r.estado === 'Ejecutado' || r.estado === 'Aprobado') genMin += (r.horas_generadas_minutos || 0);
-          if (r.estado === 'Pendiente' || r.estado === 'Aprobado (Pendiente de Ejecución)') porAprobarMin += (r.horas_generadas_minutos || 0);
+          if (r.estado === 'Pendiente' || r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Revisión por Exceso de Horas') porAprobarMin += (r.horas_generadas_minutos || 0);
       });
       compsFiltradas.forEach(c => {
           compMin += (c.horas_compensadas_minutos || 0);
@@ -180,8 +191,6 @@ function DashboardApp({ user, onLogout }) {
       setCompensaciones(compsFiltradas);
   };
 
-  useEffect(() => { fetchData(); }, []);
-
   useEffect(() => {
       if (rawRegistros.length > 0) {
           aplicarFiltrosDashboard(rawRegistros, rawCompensaciones, rawUsuarios);
@@ -198,7 +207,9 @@ function DashboardApp({ user, onLogout }) {
   const abrirEdicion = async (r) => {
       setEditingId(r.id);
       setEditingEstado(r.estado);
+      setMinutosOriginales(r.horas_generadas_minutos || 0);
       setFormData({ fecha: r.fecha, hora_inicio: r.hora_inicio || '', hora_termino: r.hora_termino || '', motivo: r.motivo, actividad: r.actividad, departamento: r.departamento || user.departamento });
+      setArchivoEvidencia(null);
       try {
           const res = await fetch(`${API_URL}/api/registros/${r.id}`);
           if(res.ok) {
@@ -217,6 +228,7 @@ function DashboardApp({ user, onLogout }) {
       fetchData();
   };
 
+  // REQUISITO 5: CÁLCULO DE MINUTOS Y HORAS EXACTOS
   const calcularMinutos = () => {
     if (!formData.hora_inicio || !formData.hora_termino) return 0;
     let [h1, m1] = formData.hora_inicio.split(':').map(Number);
@@ -229,14 +241,21 @@ function DashboardApp({ user, onLogout }) {
 
   const handleSubmit = async (e, marcarFinalizado = false) => {
     if (e) e.preventDefault();
-    const minutos = (formData.hora_inicio && formData.hora_termino) ? calcularMinutos() : 0;
+    const minutosNuevos = (formData.hora_inicio && formData.hora_termino) ? calcularMinutos() : 0;
 
     let nuevoEstado = editingEstado;
+
+    // REQUISITO 1: SI AGREGA MÁS TIEMPO DEL SOLICITADO, DEBE ESPERAR NUEVA APROBACIÓN DE LA ADMIN
     if (marcarFinalizado) {
-        nuevoEstado = 'Ejecutado';
+        if (minutosNuevos > minutosOriginales && minutosOriginales > 0) {
+            nuevoEstado = 'Revisión por Exceso de Horas';
+            alert(`⚠️ El tiempo ejecutado (${formatTime(minutosNuevos)} hrs) excede el tiempo inicialmente aprobado (${formatTime(minutosOriginales)} hrs). El registro quedará en 'Revisión por Exceso de Horas' a la espera de aprobación de la Administradora.`);
+        } else {
+            nuevoEstado = 'Ejecutado';
+        }
     }
 
-    const payload = { ...formData, horas_generadas_minutos: minutos, usuario_id: user.id, intervinientes, estado: nuevoEstado };
+    const payload = { ...formData, horas_generadas_minutos: minutosNuevos, usuario_id: user.id, intervinientes, estado: nuevoEstado, tiene_evidencia: archivoEvidencia ? 1 : 0 };
 
     if (editingId) {
         await fetch(`${API_URL}/api/registros/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -244,25 +263,26 @@ function DashboardApp({ user, onLogout }) {
         await fetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     }
 
-    setShowModal(false); setEditingId(null); setIntervinientes([]);
+    setShowModal(false); setEditingId(null); setIntervinientes([]); setArchivoEvidencia(null);
     fetchData();
   };
 
+  // REQUISITO 7: CORRECCIÓN DE ERRORES DE CÁLCULO DE COMPENSACIONES
   const obtenerSaldoAuditorSeleccionado = (uId) => {
     if (!uId) return 0;
-    const numId = Number(uId);
+    const numId = String(uId);
     let totalEjecutado = 0;
     let totalCompensado = 0;
 
     rawRegistros.forEach(r => {
-      if (Number(r.usuario_id) === numId && (r.estado === 'Ejecutado' || r.estado === 'Aprobado')) {
-        totalEjecutado += (r.horas_generadas_minutos || 0);
+      if (String(r.usuario_id) === numId && (r.estado === 'Ejecutado' || r.estado === 'Aprobado')) {
+        totalEjecutado += (Number(r.horas_generadas_minutos) || 0);
       }
     });
 
     rawCompensaciones.forEach(c => {
-      if (Number(c.usuario_id) === numId) {
-        totalCompensado += (c.horas_compensadas_minutos || 0);
+      if (String(c.usuario_id) === numId) {
+        totalCompensado += (Number(c.horas_compensadas_minutos) || 0);
       }
     });
 
@@ -272,8 +292,17 @@ function DashboardApp({ user, onLogout }) {
   const handleCompSubmit = async (e) => {
     e.preventDefault();
     if(!compData.usuario_id) return alert("Por favor, seleccione el auditor.");
-    const [h, m] = compData.horas.split(':').map(Number);
-    const totalMinutos = (h * 60) + (m || 0);
+
+    // PERMITE MINUTOS EXACTOS EN COMPENSACIÓN (FORMATO HH:MM)
+    let totalMinutos = 0;
+    if (compData.horas.includes(':')) {
+      const [h, m] = compData.horas.split(':').map(Number);
+      totalMinutos = (h * 60) + (m || 0);
+    } else {
+      totalMinutos = Number(compData.horas) * 60;
+    }
+
+    if (isNaN(totalMinutos) || totalMinutos <= 0) return alert("Por favor, ingrese un tiempo válido en formato HH:MM o minutos.");
 
     const saldoRealMinutos = obtenerSaldoAuditorSeleccionado(compData.usuario_id);
 
@@ -284,13 +313,10 @@ function DashboardApp({ user, onLogout }) {
     });
 
     if (res.ok) {
-      // OBTENER CORREO / USERNAME DEL USUARIO SELECCIONADO PARA LA NOTIFICACIÓN
       const usuarioDestino = usuariosDB.find(u => String(u.id) === String(compData.usuario_id));
       if (usuarioDestino && usuarioDestino.email) {
         const asunto = encodeURIComponent("Notificación de Compensación Registrada - Remesas ASACh");
-        const cuerpo = encodeURIComponent(`Hola ${usuarioDestino.nombre},\n\nSe ha registrado una compensación de horas en tu cuenta:\n\n📅 Fecha: ${compData.fecha}\n⏰ Horas descontadas: ${compData.horas} hrs\n📌 Motivo: ${compData.motivo}\n\nSaldo restante disponible: ${formatTime(saldoRealMinutos - totalMinutos)} hrs.\n\nSaludos,\nAdministración de Remesas ASACh`);
-
-        // Abre el cliente de correo predeterminado del sistema con el correo del usuario
+        const cuerpo = encodeURIComponent(`Hola ${usuarioDestino.nombre},\n\nSe ha registrado una compensación de horas en tu cuenta:\n\n📅 Fecha: ${compData.fecha}\n⏰ Horas descontadas: ${formatTime(totalMinutos)} hrs\n📌 Motivo: ${compData.motivo}\n\nSaldo restante disponible: ${formatTime(saldoRealMinutos - totalMinutos)} hrs.\n\nSaludos,\nAdministración de Remesas ASACh`);
         window.open(`mailto:${usuarioDestino.email}?subject=${asunto}&body=${cuerpo}`, '_blank');
       }
     }
@@ -342,6 +368,8 @@ function DashboardApp({ user, onLogout }) {
           case 'Aprobado (Pendiente de Ejecución)':
           case 'Autorizado':
               return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap">Aprobado (Pendiente de Ejecución)</span>;
+          case 'Revisión por Exceso de Horas':
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 whitespace-nowrap">Revisión por Exceso de Horas</span>;
           case 'Rechazado':
               return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800 whitespace-nowrap">Rechazado</span>;
           default:
@@ -349,7 +377,6 @@ function DashboardApp({ user, onLogout }) {
       }
   };
 
-  // ASIGNACIÓN DE DIVERSIFICACIÓN DE COLORES SEGÚN EL ROL DEL USUARIO
   const renderBadgeRol = (rol) => {
     switch (rol) {
       case 'Administrador':
@@ -386,7 +413,7 @@ function DashboardApp({ user, onLogout }) {
   });
 
   const cantEjecutadas = registros.filter(r => r.estado === 'Ejecutado').length;
-  const cantPendientes = registros.filter(r => r.estado === 'Pendiente').length;
+  const cantPendientes = registros.filter(r => r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas').length;
   const cantAprobadasPendientes = registros.filter(r => r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado').length;
   const cantRechazadas = registros.filter(r => r.estado === 'Rechazado').length;
 
@@ -397,12 +424,32 @@ function DashboardApp({ user, onLogout }) {
     ...(cantRechazadas > 0 ? [{ name: 'Rechazadas', value: cantRechazadas, color: '#ef4444' }] : [])
   ].filter(d => d.value > 0);
 
-  const auditoresData = usuariosDB.map(u => ({
-    nombre: u.nombre ? u.nombre.split(' ')[0] : 'Auditor',
-    registros: rawRegistros.filter(r => String(r.usuario_id) === String(u.id)).length
-  }));
+  // REQUISITO 3: GRÁFICO DE BARRAS DOBLE POR AUDITOR (APROBADAS/EJECUTADAS VS COMPENSADAS)
+  const auditoresDataDoble = usuariosDB.map(u => {
+    const uId = String(u.id);
+    let minAprobadas = 0;
+    let minCompensadas = 0;
 
-  const solicitudesPendientes = rawRegistros.filter(r => r.estado === 'Pendiente');
+    rawRegistros.forEach(r => {
+      if (String(r.usuario_id) === uId && (r.estado === 'Ejecutado' || r.estado === 'Aprobado')) {
+        minAprobadas += (Number(r.horas_generadas_minutos) || 0);
+      }
+    });
+
+    rawCompensaciones.forEach(c => {
+      if (String(c.usuario_id) === uId) {
+        minCompensadas += (Number(c.horas_compensadas_minutos) || 0);
+      }
+    });
+
+    return {
+      nombre: u.nombre ? u.nombre.split(' ')[0] : 'Auditor',
+      Aprobadas: Number((minAprobadas / 60).toFixed(1)),
+      Compensadas: Number((minCompensadas / 60).toFixed(1))
+    };
+  });
+
+  const solicitudesPendientes = rawRegistros.filter(r => r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas');
 
   const menuClass = (tab) => `flex items-center gap-2.5 p-2.5 w-full rounded-lg transition text-left text-xs ${activeTab === tab ? (isAdmin ? 'bg-teal-900 font-bold' : 'bg-blue-800 font-bold') : (isAdmin ? 'hover:bg-teal-900' : 'hover:bg-blue-800')}`;
 
@@ -476,16 +523,19 @@ function DashboardApp({ user, onLogout }) {
             </div>
           </div>
 
+          {/* REQUISITO 3: GRÁFICO DE BARRAS DOBLES (APROBADAS VS COMPENSADAS POR AUDITOR) */}
           {isAdmin && (
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-              <h3 className="font-bold text-gray-700 text-sm mb-3">Carga de Trabajo por Auditor</h3>
-              <div className="h-48 w-full">
+              <h3 className="font-bold text-gray-700 text-sm mb-3">Comparativa por Auditor: Horas Aprobadas vs Compensadas (en Hrs)</h3>
+              <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={auditoresData} layout="vertical">
-                    <XAxis type="number" hide />
-                    <YAxis dataKey="nombre" type="category" stroke="#888888" fontSize={12} width={80} />
-                    <RechartsTooltip />
-                    <Bar dataKey="registros" fill="#065f46" radius={[0, 6, 6, 0]} />
+                  <BarChart data={auditoresDataDoble}>
+                    <XAxis dataKey="nombre" stroke="#888888" fontSize={12} />
+                    <YAxis stroke="#888888" fontSize={12} />
+                    <RechartsTooltip formatter={(value) => [`${value} hrs`, '']} />
+                    <Legend />
+                    <Bar dataKey="Aprobadas" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Compensadas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -502,7 +552,7 @@ function DashboardApp({ user, onLogout }) {
                     <th className="p-3 whitespace-nowrap">Fecha / Horario Propuesto</th>
                     {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
                     <th className="p-3">Actividad Propuesta</th>
-                    <th className="p-3 whitespace-nowrap">Horas Realizadas</th>
+                    <th className="p-3 whitespace-nowrap">Tiempo Total</th>
                     <th className="p-3 whitespace-nowrap">Estado</th>
                     <th className="p-3 text-center whitespace-nowrap">Acción</th>
                   </tr>
@@ -512,15 +562,16 @@ function DashboardApp({ user, onLogout }) {
                     <tr key={r.id} className="border-b hover:bg-gray-50">
                       <td className="p-3 whitespace-nowrap"><div className="font-medium text-gray-800">{r.fecha}</div><div className="text-[11px] text-gray-500">{r.hora_inicio && r.hora_termino ? `⏰ ${r.hora_inicio} a ${r.hora_termino}` : 'Sin horario'}</div></td>
                       {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
-                      <td className="p-3 truncate max-w-xs">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" />}</td>
-                      <td className="p-3 font-bold text-gray-700 whitespace-nowrap">{formatTime(r.horas_generadas_minutos)}</td>
+                      <td className="p-3 truncate max-w-xs">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee evidencia adjunta" />}</td>
+                      {/* REQUISITO 5: MUESTRA EXACTA DE HORAS Y MINUTOS */}
+                      <td className="p-3 font-bold text-gray-700 whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs ({r.horas_generadas_minutos || 0} min)</td>
                       <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
                       <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
                           <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600 transition" title="Ver Detalle"><Eye size={16} /></button>
 
                           {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
                             <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition shadow-sm" title="Rellenar informe y finalizar">
-                              <Check size={14} /> Finalizar
+                              <Check size={14} /> Finalizar / Adjuntar Evidencia
                             </button>
                           )}
 
@@ -528,9 +579,11 @@ function DashboardApp({ user, onLogout }) {
                             <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
                           )}
 
-                          {isAdmin && r.estado === 'Pendiente' && (
+                          {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
                             <>
-                              <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">Aprobar</button>
+                              <button onClick={() => cambiarEstado(r.id, r.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">
+                                {r.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Exceso' : 'Aprobar'}
+                              </button>
                               <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded text-[11px] font-medium transition">Rechazar</button>
                             </>
                           )}
@@ -556,7 +609,7 @@ function DashboardApp({ user, onLogout }) {
                           <th className="p-3 whitespace-nowrap">Fecha</th>
                           {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
                           <th className="p-3">Actividad</th>
-                          <th className="p-3 whitespace-nowrap">Horas</th>
+                          <th className="p-3 whitespace-nowrap">Tiempo</th>
                           <th className="p-3 whitespace-nowrap">Estado</th>
                           <th className="p-3 text-center whitespace-nowrap">Acción</th>
                         </tr>
@@ -567,7 +620,7 @@ function DashboardApp({ user, onLogout }) {
                               <td className="p-3 whitespace-nowrap">{r.fecha}</td>
                               {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
                               <td className="p-3">{r.actividad}</td>
-                              <td className="p-3 font-bold whitespace-nowrap">{formatTime(r.horas_generadas_minutos)}</td>
+                              <td className="p-3 font-bold whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs</td>
                               <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
                               <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
                                   <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600" title="Ver Detalle"><Eye size={16} /></button>
@@ -578,9 +631,9 @@ function DashboardApp({ user, onLogout }) {
                                     </button>
                                   )}
 
-                                  {isAdmin && r.estado === 'Pendiente' && (
+                                  {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
                                     <>
-                                      <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
+                                      <button onClick={() => cambiarEstado(r.id, r.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
                                       <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-red-200">Rechazar</button>
                                     </>
                                   )}
@@ -594,11 +647,17 @@ function DashboardApp({ user, onLogout }) {
         );
     }
 
+    // REQUISITO 4: SECCIÓN DE COMPENSACIONES VISIBLE PARA AUDITORES Y ANALISTAS
     if (activeTab === 'compensaciones') {
       return (
         <div className="space-y-4">
           <div className="flex justify-between items-center bg-white p-3.5 rounded-xl shadow-sm border border-gray-100">
-            <div><h2 className="text-base font-bold text-gray-800">Historial de Compensaciones</h2></div>
+            <div>
+              <h2 className="text-base font-bold text-gray-800">
+                {isAdmin ? 'Historial de Compensaciones' : 'Mi Historial de Compensaciones'}
+              </h2>
+              {!isAdmin && <p className="text-gray-400 text-xs">Detalle de horas descontadas de tu saldo disponible</p>}
+            </div>
             {isAdmin && <button onClick={() => setShowModalComp(true)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 flex gap-1.5 items-center"><Plus size={16} /> Registrar Compensación</button>}
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
@@ -609,18 +668,22 @@ function DashboardApp({ user, onLogout }) {
                     <th className="p-3 whitespace-nowrap">Fecha</th>
                     {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
                     <th className="p-3">Motivo</th>
-                    <th className="p-3 whitespace-nowrap">Horas</th>
+                    <th className="p-3 whitespace-nowrap">Horas Descontadas</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {compensaciones.map(c => (
-                    <tr key={c.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3 whitespace-nowrap">{c.fecha}</td>
-                      {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{c.auditor}</td>}
-                      <td className="p-3">{c.motivo}</td>
-                      <td className="p-3 font-bold text-red-600 whitespace-nowrap">-{formatTime(c.horas_compensadas_minutos).replace('-', '')}</td>
-                    </tr>
-                  ))}
+                  {compensaciones.length === 0 ? (
+                    <tr><td colSpan="4" className="p-4 text-center text-gray-400">No hay compensaciones registradas.</td></tr>
+                  ) : (
+                    compensaciones.map(c => (
+                      <tr key={c.id} className="border-b hover:bg-gray-50">
+                        <td className="p-3 whitespace-nowrap">{c.fecha}</td>
+                        {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{c.auditor}</td>}
+                        <td className="p-3">{c.motivo}</td>
+                        <td className="p-3 font-bold text-red-600 whitespace-nowrap">-{formatTime(c.horas_compensadas_minutos).replace('-', '')} hrs ({c.horas_compensadas_minutos || 0} min)</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -676,6 +739,7 @@ function DashboardApp({ user, onLogout }) {
           <nav className="p-3 space-y-1">
             <button onClick={() => setActiveTab('dashboard')} className={menuClass('dashboard')}><LayoutDashboard size={18} /> Dashboard Visual</button>
             <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><FileText size={18} /> Tablas de Registros</button>
+            {/* HABILITADO TAMBIÉN PARA AUDITORES */}
             <button onClick={() => setActiveTab('compensaciones')} className={menuClass('compensaciones')}><Clock size={18} /> Compensaciones</button>
             {isAdmin && <button onClick={() => setActiveTab('usuarios')} className={menuClass('usuarios')}><Users size={18} /> Usuarios</button>}
           </nav>
@@ -693,12 +757,12 @@ function DashboardApp({ user, onLogout }) {
             <p className="text-xs text-gray-400">Sistema de Control de Auditorías de remesa ASACh</p>
           </div>
           <div className="flex items-center gap-3">
-            {/* CAMPANITA DE NOTIFICACIONES */}
+            {/* REQUISITO 6: CAMPANITA DE NOTIFICACIONES EN TIEMPO REAL */}
             <div className="relative">
               <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="relative p-2 text-gray-600 bg-amber-50 hover:bg-amber-100 rounded-full transition shadow-sm">
                 <Bell size={20} className="text-amber-600" />
                 {solicitudesPendientes.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-amber-500 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center font-bold shadow">
+                  <span className="absolute -top-1 -right-1 bg-amber-500 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center font-bold shadow animate-pulse">
                     {solicitudesPendientes.length}
                   </span>
                 )}
@@ -733,7 +797,7 @@ function DashboardApp({ user, onLogout }) {
                             <span className="text-[10px] text-gray-400">{r.fecha}</span>
                           </div>
                           <p className="font-bold text-gray-800 text-xs">{r.auditor || 'Lucas Ortiz'}</p>
-                          <p className="text-[11px] text-gray-500 mt-0.5">⏰ Horario propuesto: {r.hora_inicio && r.hora_termino ? `${r.hora_inicio} - ${r.hora_termino}` : 'Por definir'}</p>
+                          <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
                           <p className="text-[11px] text-gray-600 truncate mt-1 bg-gray-50 p-1.5 rounded">{r.actividad}</p>
                           <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-teal-600 transition" />
                         </div>
@@ -759,7 +823,7 @@ function DashboardApp({ user, onLogout }) {
         <div className="p-6">{renderContent()}</div>
       </main>
 
-      {/* MODAL NUEVO / EJECUTAR / EDITAR */}
+      {/* MODAL NUEVO / EJECUTAR / EDITAR CON SUBIDA DE EVIDENCIA (REQUISITO 2) */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
@@ -768,10 +832,20 @@ function DashboardApp({ user, onLogout }) {
             </h3>
             <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
               <div><label className="block font-medium mb-1">Fecha</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
+
+              {/* REQUISITO 5: INGRESO DE HORAS Y MINUTOS */}
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block font-medium mb-1">Hora Inicio</label><input type="time" required value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
-                <div><label className="block font-medium mb-1">Hora Término</label><input type="time" required value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
+                <div><label className="block font-medium mb-1">Hora Inicio (HH:MM)</label><input type="time" required value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
+                <div><label className="block font-medium mb-1">Hora Término (HH:MM)</label><input type="time" required value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
               </div>
+
+              {formData.hora_inicio && formData.hora_termino && (
+                <div className="bg-blue-50 text-blue-800 p-2.5 rounded-lg flex justify-between items-center font-medium">
+                  <span>Tiempo total calculado:</span>
+                  <span className="font-bold">{formatTime(calcularMinutos())} hrs ({calcularMinutos()} minutos)</span>
+                </div>
+              )}
+
               <div>
                 <label className="block font-medium mb-1">
                   {!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') ? 'Informe Detallado de la Actividad Ejecutada' : 'Actividad Realizada / Propuesta'}
@@ -779,12 +853,33 @@ function DashboardApp({ user, onLogout }) {
                 <textarea rows="4" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa el informe de la auditoría..."></textarea>
               </div>
 
+              {/* REQUISITO 2: ADJUNTAR ARCHIVO O FOTO DE EVIDENCIA */}
+              {!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') && (
+                <div className="p-3 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 text-center space-y-1">
+                  <Upload className="mx-auto text-gray-400" size={20} />
+                  <label className="block text-xs font-bold text-teal-800 cursor-pointer hover:underline">
+                    Adjuntar Foto / Documento de Evidencia
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={e => setArchivoEvidencia(e.target.files[0])}
+                      className="hidden"
+                    />
+                  </label>
+                  {archivoEvidencia ? (
+                    <p className="text-[11px] text-emerald-700 font-bold">📄 {archivoEvidencia.name}</p>
+                  ) : (
+                    <p className="text-[10px] text-gray-400">Archivos permitidos: JPG, PNG, PDF (Opcional)</p>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 pt-3 border-t">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button>
                 <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold">Guardar Cambios</button>
                 {!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') && (
                   <button type="button" onClick={(e) => handleSubmit(e, true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1.5 shadow">
-                    <Check size={16} /> Finalizar
+                    <Check size={16} /> Finalizar Trabajo
                   </button>
                 )}
               </div>
@@ -813,12 +908,12 @@ function DashboardApp({ user, onLogout }) {
                     <Clock size={16} />
                     <span className="font-medium">Horas pendientes a compensar:</span>
                   </div>
-                  <span className="text-sm font-extrabold">{formatTime(obtenerSaldoAuditorSeleccionado(compData.usuario_id))} hrs</span>
+                  <span className="text-sm font-extrabold">{formatTime(obtenerSaldoAuditorSeleccionado(compData.usuario_id))} hrs ({obtenerSaldoAuditorSeleccionado(compData.usuario_id)} min)</span>
                 </div>
               )}
 
               <div><label className="font-medium">Fecha</label><input type="date" required value={compData.fecha} onChange={e => setCompData({...compData, fecha: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
-              <div><label className="font-medium">Horas a Descontar (Ej: 02:00)</label><input type="text" placeholder="HH:MM" required value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
+              <div><label className="font-medium">Tiempo a Descontar (Ej: 01:30 para 1h 30m)</label><input type="text" placeholder="HH:MM" required value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
               <div><label className="font-medium">Motivo</label><input type="text" value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowModalComp(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
@@ -829,7 +924,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL DETALLE / ACCIÓN RÁPIDA */}
+      {/* MODAL DETALLE */}
       {registroDetalle && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3">
@@ -837,12 +932,15 @@ function DashboardApp({ user, onLogout }) {
             <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
             <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
             <p><strong>Horario:</strong> {registroDetalle.hora_inicio && registroDetalle.hora_termino ? `${registroDetalle.hora_inicio} - ${registroDetalle.hora_termino}` : 'Sin horario'}</p>
+            <p><strong>Tiempo Total:</strong> {formatTime(registroDetalle.horas_generadas_minutos)} hrs ({registroDetalle.horas_generadas_minutos || 0} min)</p>
             <p><strong>Actividad / Informe:</strong> {registroDetalle.actividad}</p>
             <p><strong>Estado Actual:</strong> {renderBadgeEstado(registroDetalle.estado)}</p>
 
-            {isAdmin && registroDetalle.estado === 'Pendiente' && (
+            {isAdmin && (registroDetalle.estado === 'Pendiente' || registroDetalle.estado === 'Revisión por Exceso de Horas') && (
               <div className="flex gap-2 pt-3 border-t mt-3">
-                <button onClick={() => cambiarEstado(registroDetalle.id, 'Aprobado (Pendiente de Ejecución)')} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold">Aprobar</button>
+                <button onClick={() => cambiarEstado(registroDetalle.id, registroDetalle.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold">
+                  {registroDetalle.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Exceso' : 'Aprobar'}
+                </button>
                 <button onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')} className="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold">Rechazar</button>
               </div>
             )}
@@ -854,7 +952,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL CREAR / EDITAR USUARIO (SIN CAMPO CARGO Y CON ROL ANALISTA) */}
+      {/* MODAL CREAR / EDITAR USUARIO */}
       {showModalUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-4">
