@@ -266,7 +266,7 @@ function DashboardApp({ user, onLogout }) {
       usuario_id: user.id,
       intervinientes,
       estado: nuevoEstado,
-      tiene_evidencia: archivoEvidencia ? 1 : 0,
+      tiene_evidencia: archivoEvidencia ? 1 : (registroDetalle?.tiene_evidencia || 0),
       nombre_archivo_evidencia: archivoEvidencia ? archivoEvidencia.name : (registroDetalle?.nombre_archivo_evidencia || null)
     };
 
@@ -568,7 +568,7 @@ function DashboardApp({ user, onLogout }) {
                     <tr key={r.id} className="border-b hover:bg-gray-50">
                       <td className="p-3 whitespace-nowrap"><div className="font-medium text-gray-800">{r.fecha}</div><div className="text-[11px] text-gray-500">{r.hora_inicio && r.hora_termino ? `⏰ ${r.hora_inicio} a ${r.hora_termino}` : 'Sin horario'}</div></td>
                       {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
-                      <td className="p-3 truncate max-w-xs">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee evidencia adjunta" />}</td>
+                      <td className="p-3 truncate max-w-xs">{r.actividad} {(Number(r.tiene_evidencia) > 0 || r.nombre_archivo_evidencia) && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee evidencia adjunta" />}</td>
                       <td className="p-3 font-bold text-gray-700 whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs ({r.horas_generadas_minutos || 0} min)</td>
                       <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
                       <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
@@ -639,7 +639,7 @@ function DashboardApp({ user, onLogout }) {
                                   {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
                                     <>
                                       <button onClick={() => cambiarEstado(r.id, r.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
-                                      <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-red-200">Rechazar</button>
+                                      <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Rechazar</button>
                                     </>
                                   )}
                               </td>
@@ -924,7 +924,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL DETALLE ACTUALIZADO CON LECTURA DE EVIDENCIA */}
+      {/* MODAL DETALLE CON DETECCIÓN DE EVIDENCIA REAL */}
       {registroDetalle && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3 max-h-[90vh] overflow-y-auto">
@@ -942,12 +942,12 @@ function DashboardApp({ user, onLogout }) {
                 <span className="font-bold text-gray-700 flex items-center gap-1.5">
                   <Paperclip size={14} className="text-teal-700" /> Evidencia Adjunta:
                 </span>
-                <span className="text-[10px] text-gray-400">
-                  {Number(registroDetalle.tiene_evidencia) > 0 ? 'Archivo adjunto' : 'Sin adjunto'}
+                <span className="text-[10px] font-bold text-emerald-700">
+                  {Number(registroDetalle.tiene_evidencia) > 0 || registroDetalle.nombre_archivo_evidencia ? 'Archivo adjunto' : 'Sin adjunto'}
                 </span>
               </div>
 
-              {Number(registroDetalle.tiene_evidencia) > 0 ? (
+              {Number(registroDetalle.tiene_evidencia) > 0 || registroDetalle.nombre_archivo_evidencia ? (
                 <div className="space-y-2">
                   <div className="bg-white p-2.5 rounded-lg border flex items-center justify-between shadow-sm">
                     <span className="text-[11px] font-medium text-teal-800 truncate">
@@ -955,13 +955,13 @@ function DashboardApp({ user, onLogout }) {
                     </span>
                     <a
                       href="#ver-evidencia"
-                      onClick={(e) => { e.preventDefault(); alert("Enlace a la evidencia adjuntada para revisión y sincronización con Google Drive."); }}
+                      onClick={(e) => { e.preventDefault(); alert("Vista previa o descarga de la evidencia vinculada para auditoría y respaldo en Google Drive."); }}
                       className="text-blue-600 hover:underline flex items-center gap-1 font-bold text-[11px]"
                     >
                       Ver Archivo <ExternalLink size={12} />
                     </a>
                   </div>
-                  <p className="text-[10px] text-gray-500 italic">📁 El archivo está vinculado correctamente al registro para auditoría y respaldo en Google Drive.</p>
+                  <p className="text-[10px] text-gray-500 italic">📁 El archivo está vinculado correctamente y listo para su sincronización con la carpeta de Google Drive.</p>
                 </div>
               ) : (
                 <p className="text-[11px] text-gray-400 italic">No se ha adjuntado ninguna foto o documento de evidencia para este registro.</p>
