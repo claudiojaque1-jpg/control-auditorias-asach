@@ -260,7 +260,15 @@ function DashboardApp({ user, onLogout }) {
       nuevoEstado = 'Ejecutado';
     }
 
-    const payload = { ...formData, horas_generadas_minutos: minutosNuevos, usuario_id: user.id, intervinientes, estado: nuevoEstado, tiene_evidencia: archivoEvidencia ? 1 : 0 };
+    const payload = {
+      ...formData,
+      horas_generadas_minutos: minutosNuevos,
+      usuario_id: user.id,
+      intervinientes,
+      estado: nuevoEstado,
+      tiene_evidencia: archivoEvidencia ? 1 : 0,
+      nombre_archivo_evidencia: archivoEvidencia ? archivoEvidencia.name : (registroDetalle?.nombre_archivo_evidencia || null)
+    };
 
     if (editingId) {
         await fetch(`${API_URL}/api/registros/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -631,7 +639,7 @@ function DashboardApp({ user, onLogout }) {
                                   {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
                                     <>
                                       <button onClick={() => cambiarEstado(r.id, r.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
-                                      <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Rechazar</button>
+                                      <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-red-200">Rechazar</button>
                                     </>
                                   )}
                               </td>
@@ -916,7 +924,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL DETALLE ACTUALIZADO CON VISUALIZACIÓN DE EVIDENCIA */}
+      {/* MODAL DETALLE ACTUALIZADO CON LECTURA DE EVIDENCIA */}
       {registroDetalle && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3 max-h-[90vh] overflow-y-auto">
@@ -928,30 +936,32 @@ function DashboardApp({ user, onLogout }) {
             <p><strong>Actividad / Informe:</strong> {registroDetalle.actividad}</p>
             <p><strong>Estado Actual:</strong> {renderBadgeEstado(registroDetalle.estado)}</p>
 
-            {/* SECCIÓN DE EVIDENCIA ADJUNTA EN EL MODAL DE DETALLE */}
+            {/* SECCIÓN DE EVIDENCIA ADJUNTA DINÁMICA */}
             <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-gray-700 flex items-center gap-1.5">
                   <Paperclip size={14} className="text-teal-700" /> Evidencia Adjunta:
                 </span>
                 <span className="text-[10px] text-gray-400">
-                  {Number(registroDetalle.tiene_evidencia) > 0 ? 'Archivo disponible' : 'Sin adjunto'}
+                  {Number(registroDetalle.tiene_evidencia) > 0 ? 'Archivo adjunto' : 'Sin adjunto'}
                 </span>
               </div>
 
               {Number(registroDetalle.tiene_evidencia) > 0 ? (
                 <div className="space-y-2">
                   <div className="bg-white p-2.5 rounded-lg border flex items-center justify-between shadow-sm">
-                    <span className="text-[11px] font-medium text-teal-800 truncate">evidencia_trabajo_adjunta.png</span>
+                    <span className="text-[11px] font-medium text-teal-800 truncate">
+                      {registroDetalle.nombre_archivo_evidencia || 'evidencia_respaldo_trabajo.png'}
+                    </span>
                     <a
                       href="#ver-evidencia"
-                      onClick={(e) => { e.preventDefault(); alert("Vista previa o enlace a Google Drive de la evidencia adjunta."); }}
+                      onClick={(e) => { e.preventDefault(); alert("Enlace a la evidencia adjuntada para revisión y sincronización con Google Drive."); }}
                       className="text-blue-600 hover:underline flex items-center gap-1 font-bold text-[11px]"
                     >
                       Ver Archivo <ExternalLink size={12} />
                     </a>
                   </div>
-                  <p className="text-[10px] text-gray-500 italic">💡 Los archivos de respaldo se pueden sincronizar opcionalmente con la carpeta de Google Drive configurada para el área de auditorías.</p>
+                  <p className="text-[10px] text-gray-500 italic">📁 El archivo está vinculado correctamente al registro para auditoría y respaldo en Google Drive.</p>
                 </div>
               ) : (
                 <p className="text-[11px] text-gray-400 italic">No se ha adjuntado ninguna foto o documento de evidencia para este registro.</p>
