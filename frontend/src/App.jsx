@@ -108,6 +108,7 @@ function DashboardApp({ user, onLogout }) {
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
   const [archivoEvidencia, setArchivoEvidencia] = useState(null);
+  const [nombreArchivoGuardado, setNombreArchivoGuardado] = useState(null);
 
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
   const [compData, setCompData] = useState({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' });
@@ -202,7 +203,13 @@ function DashboardApp({ user, onLogout }) {
   const verDetallesRegistro = async (id) => {
     try {
         const res = await fetch(`${API_URL}/api/registros/${id}`);
-        if(res.ok) setRegistroDetalle(await res.json());
+        if(res.ok) {
+          const data = await res.json();
+          setRegistroDetalle(data);
+          if (data.nombre_archivo_evidencia) {
+            setNombreArchivoGuardado(data.nombre_archivo_evidencia);
+          }
+        }
     } catch(err) { alert("⚠️ Error de conexión."); }
   };
 
@@ -213,11 +220,13 @@ function DashboardApp({ user, onLogout }) {
       setHorarioOriginal({ inicio: r.hora_inicio || '', termino: r.hora_termino || '' });
       setFormData({ fecha: r.fecha, hora_inicio: r.hora_inicio || '', hora_termino: r.hora_termino || '', motivo: r.motivo, actividad: r.actividad, departamento: r.departamento || user.departamento });
       setArchivoEvidencia(null);
+      setNombreArchivoGuardado(r.nombre_archivo_evidencia || null);
       try {
           const res = await fetch(`${API_URL}/api/registros/${r.id}`);
           if(res.ok) {
               const data = await res.json();
               setIntervinientes(data.intervinientes || []);
+              if(data.nombre_archivo_evidencia) setNombreArchivoGuardado(data.nombre_archivo_evidencia);
           }
       } catch(e) {}
       setShowModal(true);
@@ -260,14 +269,16 @@ function DashboardApp({ user, onLogout }) {
       nuevoEstado = 'Ejecutado';
     }
 
+    const finalNombreArchivo = archivoEvidencia ? archivoEvidencia.name : nombreArchivoGuardado;
+
     const payload = {
       ...formData,
       horas_generadas_minutos: minutosNuevos,
       usuario_id: user.id,
       intervinientes,
       estado: nuevoEstado,
-      tiene_evidencia: archivoEvidencia ? 1 : (registroDetalle?.tiene_evidencia || 0),
-      nombre_archivo_evidencia: archivoEvidencia ? archivoEvidencia.name : (registroDetalle?.nombre_archivo_evidencia || null)
+      tiene_evidencia: finalNombreArchivo ? 1 : 0,
+      nombre_archivo_evidencia: finalNombreArchivo
     };
 
     if (editingId) {
@@ -276,7 +287,7 @@ function DashboardApp({ user, onLogout }) {
         await fetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     }
 
-    setShowModal(false); setEditingId(null); setIntervinientes([]); setArchivoEvidencia(null);
+    setShowModal(false); setEditingId(null); setIntervinientes([]); setArchivoEvidencia(null); setNombreArchivoGuardado(null);
     fetchData();
   };
 
@@ -863,12 +874,17 @@ function DashboardApp({ user, onLogout }) {
                     <input
                       type="file"
                       accept="image/*,.pdf"
-                      onChange={e => setArchivoEvidencia(e.target.files[0])}
+                      onChange={e => {
+                        if(e.target.files && e.target.files[0]) {
+                          setArchivoEvidencia(e.target.files[0]);
+                          setNombreArchivoGuardado(e.target.files[0].name);
+                        }
+                      }}
                       className="hidden"
                     />
                   </label>
-                  {archivoEvidencia ? (
-                    <p className="text-[11px] text-emerald-700 font-bold">📄 {archivoEvidencia.name}</p>
+                  {archivoEvidencia || nombreArchivoGuardado ? (
+                    <p className="text-[11px] text-emerald-700 font-bold">📄 {archivoEvidencia ? archivoEvidencia.name : nombreArchivoGuardado}</p>
                   ) : (
                     <p className="text-[10px] text-gray-400">Archivos permitidos: JPG, PNG, PDF (Opcional)</p>
                   )}
@@ -924,7 +940,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL DETALLE CON DETECCIÓN DE EVIDENCIA REAL */}
+      {/* MODAL DETALLE CON PERSISTENCIA DE EVIDENCIA */}
       {registroDetalle && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3 max-h-[90vh] overflow-y-auto">
