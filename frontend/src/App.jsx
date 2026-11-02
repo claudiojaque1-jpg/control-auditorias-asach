@@ -101,7 +101,11 @@ function DashboardApp({ user, onLogout }) {
   const [registroDetalle, setRegistroDetalle] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editingEstado, setEditingEstado] = useState('Pendiente');
+
+  // ALMACENA EL HORARIO Y MINUTOS ORIGINALES APROBADOS
   const [minutosOriginales, setMinutosOriginales] = useState(0);
+  const [horarioOriginal, setHorarioOriginal] = useState({ inicio: '', termino: '' });
+
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
   const [archivoEvidencia, setArchivoEvidencia] = useState(null);
@@ -207,6 +211,7 @@ function DashboardApp({ user, onLogout }) {
       setEditingId(r.id);
       setEditingEstado(r.estado);
       setMinutosOriginales(r.horas_generadas_minutos || 0);
+      setHorarioOriginal({ inicio: r.hora_inicio || '', termino: r.hora_termino || '' });
       setFormData({ fecha: r.fecha, hora_inicio: r.hora_inicio || '', hora_termino: r.hora_termino || '', motivo: r.motivo, actividad: r.actividad, departamento: r.departamento || user.departamento });
       setArchivoEvidencia(null);
       try {
@@ -243,14 +248,19 @@ function DashboardApp({ user, onLogout }) {
 
     let nuevoEstado = editingEstado;
 
-    // SI MODIFICA EL TIEMPO Y EXCEDE LO APROBADO ORIGINALMENTE, QUEDA EN REVISIÓN DE LA ADMIN
-    if (marcarFinalizado) {
-        if (minutosNuevos > minutosOriginales && minutosOriginales > 0) {
-            nuevoEstado = 'Revisión por Exceso de Horas';
-            alert(`⚠️ El tiempo modificado (${formatTime(minutosNuevos)} hrs) excede el horario aprobado originalmente (${formatTime(minutosOriginales)} hrs). El registro requiere una nueva autorización de la Administradora.`);
-        } else {
-            nuevoEstado = 'Ejecutado';
-        }
+    // VERIFICA SI SE ALTERÓ EL HORARIO RESPECTO AL APROBADO ORIGINALMENTE
+    const horarioAlterado = (formData.hora_inicio !== horarioOriginal.inicio) || (formData.hora_termino !== horarioOriginal.termino);
+    const tiempoCambiado = minutosNuevos !== minutosOriginales;
+
+    if (!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado')) {
+      if (horarioAlterado || tiempoCambiado) {
+        nuevoEstado = 'Revisión por Exceso de Horas';
+        alert(`⚠️ El horario ha sido modificado (${formData.hora_inicio} - ${formData.hora_termino}). La solicitud se ha enviado a la campanita de notificaciones de la Administradora para su re-autorización.`);
+      } else if (marcarFinalizado) {
+        nuevoEstado = 'Ejecutado';
+      }
+    } else if (marcarFinalizado) {
+      nuevoEstado = 'Ejecutado';
     }
 
     const payload = { ...formData, horas_generadas_minutos: minutosNuevos, usuario_id: user.id, intervinientes, estado: nuevoEstado, tiene_evidencia: archivoEvidencia ? 1 : 0 };
@@ -365,7 +375,7 @@ function DashboardApp({ user, onLogout }) {
           case 'Autorizado':
               return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap">Aprobado (Pendiente de Ejecución)</span>;
           case 'Revisión por Exceso de Horas':
-              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 whitespace-nowrap">Revisión por Exceso de Horas</span>;
+              return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 whitespace-nowrap">Revisión por Cambio de Horario</span>;
           case 'Rechazado':
               return <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800 whitespace-nowrap">Rechazado</span>;
           default:
@@ -415,7 +425,7 @@ function DashboardApp({ user, onLogout }) {
 
   const estadoData = [
     { name: 'Ejecutadas', value: cantEjecutadas, color: '#10b981' },
-    { name: 'Pendientes', value: cantPendientes, color: '#f59e0b' },
+    { name: 'Pendientes / Modificadas', value: cantPendientes, color: '#f59e0b' },
     { name: 'Aprobadas (Pend. Ejecución)', value: cantAprobadasPendientes, color: '#3b82f6' },
     ...(cantRechazadas > 0 ? [{ name: 'Rechazadas', value: cantRechazadas, color: '#ef4444' }] : [])
   ].filter(d => d.value > 0);
@@ -444,6 +454,7 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
+  // LAS SOLICITUDES EN LA CAMPANITA INCLUYEN PENDIENTES Y LAS QUE CAMBIARON SU HORARIO
   const solicitudesPendientes = rawRegistros.filter(r => r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas');
 
   const menuClass = (tab) => `flex items-center gap-2.5 p-2.5 w-full rounded-lg transition text-left text-xs ${activeTab === tab ? (isAdmin ? 'bg-teal-900 font-bold' : 'bg-blue-800 font-bold') : (isAdmin ? 'hover:bg-teal-900' : 'hover:bg-blue-800')}`;
@@ -572,7 +583,7 @@ function DashboardApp({ user, onLogout }) {
                           {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
                             <>
                               <button onClick={() => cambiarEstado(r.id, r.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">
-                                {r.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Exceso' : 'Aprobar'}
+                                {r.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Cambio' : 'Aprobar'}
                               </button>
                               <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded text-[11px] font-medium transition">Rechazar</button>
                             </>
@@ -780,10 +791,12 @@ function DashboardApp({ user, onLogout }) {
                           className="p-3 bg-white hover:bg-teal-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
                         >
                           <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{r.motivo || 'Auditoría'}</span>
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
+                              {r.estado === 'Revisión por Exceso de Horas' ? 'Horario Modificado' : (r.motivo || 'Auditoría')}
+                            </span>
                             <span className="text-[10px] text-gray-400">{r.fecha}</span>
                           </div>
-                          <p className="font-bold text-gray-800 text-xs">{r.auditor || 'Lucas Ortiz'}</p>
+                          <p className="font-bold text-gray-800 text-xs">{r.auditor || 'Auditor'}</p>
                           <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
                           <p className="text-[11px] text-gray-600 truncate mt-1 bg-gray-50 p-1.5 rounded">{r.actividad}</p>
                           <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-teal-600 transition" />
@@ -921,7 +934,7 @@ function DashboardApp({ user, onLogout }) {
             {isAdmin && (registroDetalle.estado === 'Pendiente' || registroDetalle.estado === 'Revisión por Exceso de Horas') && (
               <div className="flex gap-2 pt-3 border-t mt-3">
                 <button onClick={() => cambiarEstado(registroDetalle.id, registroDetalle.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold">
-                  {registroDetalle.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Exceso' : 'Aprobar'}
+                  {registroDetalle.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Cambio' : 'Aprobar'}
                 </button>
                 <button onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')} className="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold">Rechazar</button>
               </div>
