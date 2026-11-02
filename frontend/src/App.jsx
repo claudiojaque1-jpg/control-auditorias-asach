@@ -139,7 +139,6 @@ function DashboardApp({ user, onLogout }) {
     }
   };
 
-  // REQUISITO 6: ACTUALIZACIÓN EN TIEMPO REAL VÍA POLLING (CADA 10 SEGUNDOS)
   useEffect(() => {
     fetchData();
     const timer = setInterval(() => {
@@ -228,7 +227,6 @@ function DashboardApp({ user, onLogout }) {
       fetchData();
   };
 
-  // REQUISITO 5: CÁLCULO DE MINUTOS Y HORAS EXACTOS
   const calcularMinutos = () => {
     if (!formData.hora_inicio || !formData.hora_termino) return 0;
     let [h1, m1] = formData.hora_inicio.split(':').map(Number);
@@ -245,11 +243,11 @@ function DashboardApp({ user, onLogout }) {
 
     let nuevoEstado = editingEstado;
 
-    // REQUISITO 1: SI AGREGA MÁS TIEMPO DEL SOLICITADO, DEBE ESPERAR NUEVA APROBACIÓN DE LA ADMIN
+    // SI MODIFICA EL TIEMPO Y EXCEDE LO APROBADO ORIGINALMENTE, QUEDA EN REVISIÓN DE LA ADMIN
     if (marcarFinalizado) {
         if (minutosNuevos > minutosOriginales && minutosOriginales > 0) {
             nuevoEstado = 'Revisión por Exceso de Horas';
-            alert(`⚠️ El tiempo ejecutado (${formatTime(minutosNuevos)} hrs) excede el tiempo inicialmente aprobado (${formatTime(minutosOriginales)} hrs). El registro quedará en 'Revisión por Exceso de Horas' a la espera de aprobación de la Administradora.`);
+            alert(`⚠️ El tiempo modificado (${formatTime(minutosNuevos)} hrs) excede el horario aprobado originalmente (${formatTime(minutosOriginales)} hrs). El registro requiere una nueva autorización de la Administradora.`);
         } else {
             nuevoEstado = 'Ejecutado';
         }
@@ -267,7 +265,6 @@ function DashboardApp({ user, onLogout }) {
     fetchData();
   };
 
-  // REQUISITO 7: CORRECCIÓN DE ERRORES DE CÁLCULO DE COMPENSACIONES
   const obtenerSaldoAuditorSeleccionado = (uId) => {
     if (!uId) return 0;
     const numId = String(uId);
@@ -293,7 +290,6 @@ function DashboardApp({ user, onLogout }) {
     e.preventDefault();
     if(!compData.usuario_id) return alert("Por favor, seleccione el auditor.");
 
-    // PERMITE MINUTOS EXACTOS EN COMPENSACIÓN (FORMATO HH:MM)
     let totalMinutos = 0;
     if (compData.horas.includes(':')) {
       const [h, m] = compData.horas.split(':').map(Number);
@@ -424,7 +420,6 @@ function DashboardApp({ user, onLogout }) {
     ...(cantRechazadas > 0 ? [{ name: 'Rechazadas', value: cantRechazadas, color: '#ef4444' }] : [])
   ].filter(d => d.value > 0);
 
-  // REQUISITO 3: GRÁFICO DE BARRAS DOBLE POR AUDITOR (APROBADAS/EJECUTADAS VS COMPENSADAS)
   const auditoresDataDoble = usuariosDB.map(u => {
     const uId = String(u.id);
     let minAprobadas = 0;
@@ -477,7 +472,6 @@ function DashboardApp({ user, onLogout }) {
               </div>
           )}
 
-          {/* Tarjetas de Métricas Superiores */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-emerald-500 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">Ejecutadas</p><h2 className={`text-2xl font-extrabold mt-1 ${themeText}`}>{formatTime(stats.generadas)}</h2></div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-blue-500 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">Compensadas</p><h2 className="text-2xl font-extrabold text-blue-600 mt-1">{formatTime(stats.compensadas)}</h2></div>
@@ -486,7 +480,6 @@ function DashboardApp({ user, onLogout }) {
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-gray-400 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">{isAdmin ? "Auditores Activos" : "Mis Registros"}</p><h2 className="text-2xl font-extrabold text-gray-700 mt-1">{isAdmin ? stats.auditores : registros.length}</h2></div>
           </div>
 
-          {/* SECCIÓN DE GRÁFICAS */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 lg:col-span-2 flex flex-col justify-between">
               <h3 className="font-bold text-gray-700 text-sm mb-3">Tendencia de Horas Reales (por Mes en Hrs)</h3>
@@ -523,7 +516,6 @@ function DashboardApp({ user, onLogout }) {
             </div>
           </div>
 
-          {/* REQUISITO 3: GRÁFICO DE BARRAS DOBLES (APROBADAS VS COMPENSADAS POR AUDITOR) */}
           {isAdmin && (
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
               <h3 className="font-bold text-gray-700 text-sm mb-3">Comparativa por Auditor: Horas Aprobadas vs Compensadas (en Hrs)</h3>
@@ -542,7 +534,6 @@ function DashboardApp({ user, onLogout }) {
             </div>
           )}
 
-          {/* TABLA DEL DASHBOARD */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-3.5 border-b border-gray-100 bg-gray-50"><h3 className="font-bold text-gray-800 text-xs">Trabajos Registrados (Filtrados)</h3></div>
             <div className="overflow-x-auto">
@@ -563,7 +554,6 @@ function DashboardApp({ user, onLogout }) {
                       <td className="p-3 whitespace-nowrap"><div className="font-medium text-gray-800">{r.fecha}</div><div className="text-[11px] text-gray-500">{r.hora_inicio && r.hora_termino ? `⏰ ${r.hora_inicio} a ${r.hora_termino}` : 'Sin horario'}</div></td>
                       {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
                       <td className="p-3 truncate max-w-xs">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee evidencia adjunta" />}</td>
-                      {/* REQUISITO 5: MUESTRA EXACTA DE HORAS Y MINUTOS */}
                       <td className="p-3 font-bold text-gray-700 whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs ({r.horas_generadas_minutos || 0} min)</td>
                       <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
                       <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
@@ -647,7 +637,6 @@ function DashboardApp({ user, onLogout }) {
         );
     }
 
-    // REQUISITO 4: SECCIÓN DE COMPENSACIONES VISIBLE PARA AUDITORES Y ANALISTAS
     if (activeTab === 'compensaciones') {
       return (
         <div className="space-y-4">
@@ -739,7 +728,6 @@ function DashboardApp({ user, onLogout }) {
           <nav className="p-3 space-y-1">
             <button onClick={() => setActiveTab('dashboard')} className={menuClass('dashboard')}><LayoutDashboard size={18} /> Dashboard Visual</button>
             <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><FileText size={18} /> Tablas de Registros</button>
-            {/* HABILITADO TAMBIÉN PARA AUDITORES */}
             <button onClick={() => setActiveTab('compensaciones')} className={menuClass('compensaciones')}><Clock size={18} /> Compensaciones</button>
             {isAdmin && <button onClick={() => setActiveTab('usuarios')} className={menuClass('usuarios')}><Users size={18} /> Usuarios</button>}
           </nav>
@@ -757,7 +745,6 @@ function DashboardApp({ user, onLogout }) {
             <p className="text-xs text-gray-400">Sistema de Control de Auditorías de remesa ASACh</p>
           </div>
           <div className="flex items-center gap-3">
-            {/* REQUISITO 6: CAMPANITA DE NOTIFICACIONES EN TIEMPO REAL */}
             <div className="relative">
               <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="relative p-2 text-gray-600 bg-amber-50 hover:bg-amber-100 rounded-full transition shadow-sm">
                 <Bell size={20} className="text-amber-600" />
@@ -823,7 +810,6 @@ function DashboardApp({ user, onLogout }) {
         <div className="p-6">{renderContent()}</div>
       </main>
 
-      {/* MODAL NUEVO / EJECUTAR / EDITAR CON SUBIDA DE EVIDENCIA (REQUISITO 2) */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
@@ -833,7 +819,6 @@ function DashboardApp({ user, onLogout }) {
             <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
               <div><label className="block font-medium mb-1">Fecha</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
 
-              {/* REQUISITO 5: INGRESO DE HORAS Y MINUTOS */}
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block font-medium mb-1">Hora Inicio (HH:MM)</label><input type="time" required value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
                 <div><label className="block font-medium mb-1">Hora Término (HH:MM)</label><input type="time" required value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
@@ -853,7 +838,6 @@ function DashboardApp({ user, onLogout }) {
                 <textarea rows="4" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa el informe de la auditoría..."></textarea>
               </div>
 
-              {/* REQUISITO 2: ADJUNTAR ARCHIVO O FOTO DE EVIDENCIA */}
               {!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') && (
                 <div className="p-3 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 text-center space-y-1">
                   <Upload className="mx-auto text-gray-400" size={20} />
@@ -888,7 +872,6 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL REGISTRAR COMPENSACIÓN */}
       {showModalComp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-4">
@@ -924,7 +907,6 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL DETALLE */}
       {registroDetalle && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3">
@@ -952,7 +934,6 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL CREAR / EDITAR USUARIO */}
       {showModalUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-4">
