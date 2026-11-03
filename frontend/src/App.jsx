@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
-import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight, Check, Upload, ExternalLink } from 'lucide-react';
+import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight, Check, Upload, ExternalLink, ChevronLeft } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
@@ -95,6 +95,10 @@ function DashboardApp({ user, onLogout }) {
   const [rawCompensaciones, setRawCompensaciones] = useState([]);
   const [rawUsuarios, setRawUsuarios] = useState([]);
 
+  // Paginación (Máximo 20 por página)
+  const [paginaActual, setPaginaActual] = useState(1);
+  const registrosPorPagina = 20;
+
   const [showModal, setShowModal] = useState(false);
   const [showModalComp, setShowModalComp] = useState(false);
   const [showModalUser, setShowModalUser] = useState(false);
@@ -107,8 +111,6 @@ function DashboardApp({ user, onLogout }) {
 
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
-
-  // ESTADO PARA EL ENLACE DE EVIDENCIA PERSISTENTE
   const [nombreArchivoGuardado, setNombreArchivoGuardado] = useState(null);
 
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
@@ -156,6 +158,9 @@ function DashboardApp({ user, onLogout }) {
       let regsFiltradas = todosRegs;
       let compsFiltradas = todasComps;
 
+      // Excluir administradores de las métricas/vistas de auditores si corresponde
+      const auditoresPuros = todosUsers.filter(u => u.rol !== 'Administrador');
+
       if (!isAdmin) {
           regsFiltradas = regsFiltradas.filter(r => String(r.usuario_id) === String(user.id));
           compsFiltradas = compsFiltradas.filter(c => String(c.usuario_id) === String(user.id));
@@ -188,11 +193,12 @@ function DashboardApp({ user, onLogout }) {
           compensadas: compMin,
           pendientes: genMin - compMin,
           porAprobar: porAprobarMin,
-          auditores: todosUsers.length
+          auditores: auditoresPuros.length
       });
 
       setRegistros(regsFiltradas);
       setCompensaciones(compsFiltradas);
+      setPaginaActual(1); // Resetear a página 1 al filtrar
   };
 
   useEffect(() => {
@@ -444,7 +450,9 @@ function DashboardApp({ user, onLogout }) {
     ...(cantRechazadas > 0 ? [{ name: 'Rechazadas', value: cantRechazadas, color: '#ef4444' }] : [])
   ].filter(d => d.value > 0);
 
-  const auditoresDataDoble = usuariosDB.map(u => {
+  // Excluir administradores de las estadísticas por auditor
+  const auditoresSoloAuditores = usuariosDB.filter(u => u.rol !== 'Administrador');
+  const auditoresDataDoble = auditoresSoloAuditores.map(u => {
     const uId = String(u.id);
     let minAprobadas = 0;
     let minCompensadas = 0;
@@ -468,7 +476,16 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
-  const solicitudesPendientes = rawRegistros.filter(r => r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas');
+  // Notificaciones unificadas: Para Admin ve solicitudes pendientes. Para Auditor ve notificaciones de compensaciones asignadas u otras alertas.
+  const solicitudesPendientes = isAdmin
+    ? rawRegistros.filter(r => r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas')
+    : rawCompensaciones.filter(c => String(c.usuario_id) === String(user.id));
+
+  // Paginación lógica para registros
+  const indiceUltimoRegistro = paginaActual * registrosPorPagina;
+  const indicePrimerRegistro = indiceUltimoRegistro - registrosPorPagina;
+  const registrosActuales = registros.slice(indicePrimerRegistro, indiceUltimoRegistro);
+  const totalPaginas = Math.ceil(registros.length / registrosPorPagina);
 
   const menuClass = (tab) => `flex items-center gap-2.5 p-2.5 w-full rounded-lg transition text-left text-xs ${activeTab === tab ? (isAdmin ? 'bg-teal-900 font-bold' : 'bg-blue-800 font-bold') : (isAdmin ? 'hover:bg-teal-900' : 'hover:bg-blue-800')}`;
 
@@ -490,7 +507,7 @@ function DashboardApp({ user, onLogout }) {
                       </select>
                       <select value={dashFiltroUsuario} onChange={e => setDashFiltroUsuario(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
                           <option value="todos">👥 Todos los Auditores</option>
-                          {usuariosDB.map(u => (<option key={u.id} value={u.id}>{u.nombre}</option>))}
+                          {auditoresSoloAuditores.map(u => (<option key={u.id} value={u.id}>{u.nombre}</option>))}
                       </select>
                   </div>
               </div>
@@ -559,7 +576,10 @@ function DashboardApp({ user, onLogout }) {
           )}
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-3.5 border-b border-gray-100 bg-gray-50"><h3 className="font-bold text-gray-800 text-xs">Trabajos Registrados (Filtrados)</h3></div>
+            <div className="p-3.5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+              <h3 className="font-bold text-gray-800 text-xs">Trabajos Registrados (Filtrados)</h3>
+              <span className="text-gray-400 text-[11px]">Mostrando {registrosActuales.length} de {registros.length} registros</span>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
@@ -573,7 +593,7 @@ function DashboardApp({ user, onLogout }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {registros.length === 0 ? (<tr><td colSpan="6" className="p-4 text-center text-gray-500">No hay registros para este filtro</td></tr>) : registros.map(r => (
+                  {registrosActuales.length === 0 ? (<tr><td colSpan="6" className="p-4 text-center text-gray-500">No hay registros para este filtro</td></tr>) : registrosActuales.map(r => (
                     <tr key={r.id} className="border-b hover:bg-gray-50">
                       <td className="p-3 whitespace-nowrap"><div className="font-medium text-gray-800">{r.fecha}</div><div className="text-[11px] text-gray-500">{r.hora_inicio && r.hora_termino ? `⏰ ${r.hora_inicio} a ${r.hora_termino}` : 'Sin horario'}</div></td>
                       {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
@@ -595,7 +615,7 @@ function DashboardApp({ user, onLogout }) {
 
                           {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
                             <>
-                              <button onClick={() => cambiarEstado(r.id, r.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">
+                              <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">
                                 {r.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Cambio' : 'Aprobar'}
                               </button>
                               <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded text-[11px] font-medium transition">Rechazar</button>
@@ -607,6 +627,27 @@ function DashboardApp({ user, onLogout }) {
                 </tbody>
               </table>
             </div>
+
+            {/* Paginación */}
+            {totalPaginas > 1 && (
+              <div className="p-3 bg-gray-50 border-t flex justify-between items-center text-xs">
+                <button
+                  disabled={paginaActual === 1}
+                  onClick={() => setPaginaActual(p => Math.max(p - 1, 1))}
+                  className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
+                >
+                  <ChevronLeft size={14} /> Anterior
+                </button>
+                <span className="text-gray-600 font-bold">Página {paginaActual} de {totalPaginas}</span>
+                <button
+                  disabled={paginaActual === totalPaginas}
+                  onClick={() => setPaginaActual(p => Math.min(p + 1, totalPaginas))}
+                  className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
+                >
+                  Siguiente <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       );
@@ -615,7 +656,10 @@ function DashboardApp({ user, onLogout }) {
     if (activeTab === 'registros') {
         return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
-                <div className="p-3.5 border-b border-gray-100 bg-gray-50"><h3 className="font-bold text-gray-800">Historial General de Trabajos</h3></div>
+                <div className="p-3.5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                  <h3 className="font-bold text-gray-800">Historial General de Trabajos</h3>
+                  <span className="text-gray-400 text-[11px]">Mostrando {registrosActuales.length} de {rawRegistros.length} registros</span>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                       <thead>
@@ -629,7 +673,7 @@ function DashboardApp({ user, onLogout }) {
                         </tr>
                       </thead>
                       <tbody>
-                      {rawRegistros.map(r => (
+                      {rawRegistros.slice(indicePrimerRegistro, indiceUltimoRegistro).map(r => (
                           <tr key={r.id} className="border-b hover:bg-gray-50">
                               <td className="p-3 whitespace-nowrap">{r.fecha}</td>
                               {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
@@ -647,7 +691,7 @@ function DashboardApp({ user, onLogout }) {
 
                                   {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
                                     <>
-                                      <button onClick={() => cambiarEstado(r.id, r.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
+                                      <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
                                       <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Rechazar</button>
                                     </>
                                   )}
@@ -657,6 +701,27 @@ function DashboardApp({ user, onLogout }) {
                       </tbody>
                   </table>
                 </div>
+
+                {/* Paginación general */}
+                {Math.ceil(rawRegistros.length / registrosPorPagina) > 1 && (
+                  <div className="p-3 bg-gray-50 border-t flex justify-between items-center text-xs">
+                    <button
+                      disabled={paginaActual === 1}
+                      onClick={() => setPaginaActual(p => Math.max(p - 1, 1))}
+                      className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
+                    >
+                      <ChevronLeft size={14} /> Anterior
+                    </button>
+                    <span className="text-gray-600 font-bold">Página {paginaActual} de {Math.ceil(rawRegistros.length / registrosPorPagina)}</span>
+                    <button
+                      disabled={paginaActual === Math.ceil(rawRegistros.length / registrosPorPagina)}
+                      onClick={() => setPaginaActual(p => Math.min(p + 1, Math.ceil(rawRegistros.length / registrosPorPagina)))}
+                      className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
+                    >
+                      Siguiente <ChevronRight size={14} />
+                    </button>
+                  </div>
+                )}
             </div>
         );
     }
@@ -784,7 +849,7 @@ function DashboardApp({ user, onLogout }) {
                   <div className="bg-teal-800 text-white p-3.5 flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <Bell size={16} />
-                      <span className="font-bold text-xs">Solicitudes Pendientes</span>
+                      <span className="font-bold text-xs">{isAdmin ? 'Solicitudes Pendientes' : 'Mis Notificaciones de Compensación'}</span>
                     </div>
                     {solicitudesPendientes.length > 0 && (
                       <span className="bg-amber-400 text-teal-900 font-bold text-[10px] px-2 py-0.5 rounded-full">
@@ -795,35 +860,55 @@ function DashboardApp({ user, onLogout }) {
 
                   <div className="max-h-80 overflow-y-auto p-3 space-y-2.5 bg-gray-50">
                     {solicitudesPendientes.length === 0 ? (
-                      <p className="text-gray-400 text-center py-6 text-xs font-medium">No hay solicitudes pendientes por revisar.</p>
+                      <p className="text-gray-400 text-center py-6 text-xs font-medium">No hay notificaciones pendientes.</p>
                     ) : (
-                      solicitudesPendientes.map(r => (
-                        <div
-                          key={r.id}
-                          onClick={() => { verDetallesRegistro(r.id); setShowNotificationsDropdown(false); }}
-                          className="p-3 bg-white hover:bg-teal-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
-                        >
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                              {r.estado === 'Revisión por Exceso de Horas' ? 'Horario Modificado' : (r.motivo || 'Auditoría')}
-                            </span>
-                            <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                      isAdmin ? (
+                        solicitudesPendientes.map(r => (
+                          <div
+                            key={r.id}
+                            onClick={() => { verDetallesRegistro(r.id); setShowNotificationsDropdown(false); }}
+                            className="p-3 bg-white hover:bg-teal-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
+                          >
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
+                                {r.estado === 'Revisión por Exceso de Horas' ? 'Horario Modificado' : (r.motivo || 'Auditoría')}
+                              </span>
+                              <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                            </div>
+                            <p className="font-bold text-gray-800 text-xs">{r.auditor || 'Auditor'}</p>
+                            <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
+                            <p className="text-[11px] text-gray-600 truncate mt-1 bg-gray-50 p-1.5 rounded">{r.actividad}</p>
+                            <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-teal-600 transition" />
                           </div>
-                          <p className="font-bold text-gray-800 text-xs">{r.auditor || 'Auditor'}</p>
-                          <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
-                          <p className="text-[11px] text-gray-600 truncate mt-1 bg-gray-50 p-1.5 rounded">{r.actividad}</p>
-                          <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-teal-600 transition" />
-                        </div>
-                      ))
+                        ))
+                      ) : (
+                        solicitudesPendientes.map(c => (
+                          <div
+                            key={c.id}
+                            onClick={() => { setActiveTab('compensaciones'); setShowNotificationsDropdown(false); }}
+                            className="p-3 bg-white hover:bg-blue-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
+                          >
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                                Compensación aplicada
+                              </span>
+                              <span className="text-[10px] text-gray-400">{c.fecha}</span>
+                            </div>
+                            <p className="font-bold text-gray-800 text-xs">Motivo: {c.motivo}</p>
+                            <p className="text-[11px] text-red-600 font-bold mt-0.5">⏰ Descuento: -{formatTime(c.horas_compensadas_minutos)} hrs</p>
+                            <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-blue-600 transition" />
+                          </div>
+                        ))
+                      )
                     )}
                   </div>
 
                   <div className="p-2.5 bg-white border-t text-center">
                     <button
-                      onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }}
+                      onClick={() => { setActiveTab(isAdmin ? 'dashboard' : 'compensaciones'); setShowNotificationsDropdown(false); }}
                       className="text-xs font-bold text-teal-800 hover:text-teal-900 transition"
                     >
-                      Ver todas en el panel principal
+                      Ver todos en el panel
                     </button>
                   </div>
                 </div>
@@ -903,7 +988,7 @@ function DashboardApp({ user, onLogout }) {
                 <label className="font-medium">Seleccionar Auditor</label>
                 <select required value={compData.usuario_id} onChange={e => setCompData({...compData, usuario_id: e.target.value})} className="w-full border rounded p-2 bg-gray-50">
                   <option value="">-- Seleccione Auditor --</option>
-                  {usuariosDB.map(u => (<option key={u.id} value={u.id}>{u.nombre}</option>))}
+                  {auditoresSoloAuditores.map(u => (<option key={u.id} value={u.id}>{u.nombre}</option>))}
                 </select>
               </div>
 
@@ -919,7 +1004,16 @@ function DashboardApp({ user, onLogout }) {
 
               <div><label className="font-medium">Fecha</label><input type="date" required value={compData.fecha} onChange={e => setCompData({...compData, fecha: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
               <div><label className="font-medium">Tiempo a Descontar (Ej: 01:30 para 1h 30m)</label><input type="text" placeholder="HH:MM" required value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
-              <div><label className="font-medium">Motivo</label><input type="text" value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
+
+              <div>
+                <label className="font-medium">Motivo</label>
+                <select value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded p-2 bg-gray-50">
+                  <option value="Salida anticipada">Salida anticipada</option>
+                  <option value="Medio día">Medio día</option>
+                  <option value="Día libre">Día libre</option>
+                </select>
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowModalComp(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
                 <button type="submit" className="px-3 py-1.5 bg-green-600 text-white rounded font-bold">Registrar y Notificar</button>
@@ -976,7 +1070,7 @@ function DashboardApp({ user, onLogout }) {
 
             {isAdmin && (registroDetalle.estado === 'Pendiente' || registroDetalle.estado === 'Revisión por Exceso de Horas') && (
               <div className="flex gap-2 pt-3 border-t mt-3">
-                <button onClick={() => cambiarEstado(registroDetalle.id, registroDetalle.estado === 'Revisión por Exceso de Horas' ? 'Ejecutado' : 'Aprobado (Pendiente de Ejecución)')} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold">
+                <button onClick={() => cambiarEstado(registroDetalle.id, 'Aprobado (Pendiente de Ejecución)')} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold">
                   {registroDetalle.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Cambio' : 'Aprobar'}
                 </button>
                 <button onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')} className="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold">Rechazar</button>
