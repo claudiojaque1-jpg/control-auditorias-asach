@@ -107,7 +107,8 @@ function DashboardApp({ user, onLogout }) {
 
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
-  const [archivoEvidencia, setArchivoEvidencia] = useState(null);
+
+  // ESTADO PARA EL ENLACE DE EVIDENCIA PERSISTENTE
   const [nombreArchivoGuardado, setNombreArchivoGuardado] = useState(null);
 
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
@@ -219,7 +220,6 @@ function DashboardApp({ user, onLogout }) {
       setMinutosOriginales(r.horas_generadas_minutos || 0);
       setHorarioOriginal({ inicio: r.hora_inicio || '', termino: r.hora_termino || '' });
       setFormData({ fecha: r.fecha, hora_inicio: r.hora_inicio || '', hora_termino: r.hora_termino || '', motivo: r.motivo, actividad: r.actividad, departamento: r.departamento || user.departamento });
-      setArchivoEvidencia(null);
       setNombreArchivoGuardado(r.nombre_archivo_evidencia || null);
       try {
           const res = await fetch(`${API_URL}/api/registros/${r.id}`);
@@ -269,16 +269,14 @@ function DashboardApp({ user, onLogout }) {
       nuevoEstado = 'Ejecutado';
     }
 
-    const finalNombreArchivo = archivoEvidencia ? archivoEvidencia.name : nombreArchivoGuardado;
-
     const payload = {
       ...formData,
       horas_generadas_minutos: minutosNuevos,
       usuario_id: user.id,
       intervinientes,
       estado: nuevoEstado,
-      tiene_evidencia: finalNombreArchivo ? 1 : 0,
-      nombre_archivo_evidencia: finalNombreArchivo
+      tiene_evidencia: nombreArchivoGuardado ? 1 : 0,
+      nombre_archivo_evidencia: nombreArchivoGuardado
     };
 
     if (editingId) {
@@ -287,7 +285,7 @@ function DashboardApp({ user, onLogout }) {
         await fetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     }
 
-    setShowModal(false); setEditingId(null); setIntervinientes([]); setArchivoEvidencia(null); setNombreArchivoGuardado(null);
+    setShowModal(false); setEditingId(null); setIntervinientes([]); setNombreArchivoGuardado(null);
     fetchData();
   };
 
@@ -579,7 +577,7 @@ function DashboardApp({ user, onLogout }) {
                     <tr key={r.id} className="border-b hover:bg-gray-50">
                       <td className="p-3 whitespace-nowrap"><div className="font-medium text-gray-800">{r.fecha}</div><div className="text-[11px] text-gray-500">{r.hora_inicio && r.hora_termino ? `⏰ ${r.hora_inicio} a ${r.hora_termino}` : 'Sin horario'}</div></td>
                       {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
-                      <td className="p-3 truncate max-w-xs">{r.actividad} {(Number(r.tiene_evidencia) > 0 || r.nombre_archivo_evidencia) && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee evidencia adjunta" />}</td>
+                      <td className="p-3 truncate max-w-xs">{r.actividad} {(Number(r.tiene_evidencia) > 0 || r.nombre_archivo_evidencia) && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee enlace de evidencia" />}</td>
                       <td className="p-3 font-bold text-gray-700 whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs ({r.horas_generadas_minutos || 0} min)</td>
                       <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
                       <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
@@ -587,7 +585,7 @@ function DashboardApp({ user, onLogout }) {
 
                           {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
                             <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition shadow-sm" title="Rellenar informe y finalizar">
-                              <Check size={14} /> Finalizar / Adjuntar Evidencia
+                              <Check size={14} /> Finalizar / Enlace Evidencia
                             </button>
                           )}
 
@@ -867,27 +865,18 @@ function DashboardApp({ user, onLogout }) {
               </div>
 
               {!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') && (
-                <div className="p-3 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 text-center space-y-1">
-                  <Upload className="mx-auto text-gray-400" size={20} />
-                  <label className="block text-xs font-bold text-teal-800 cursor-pointer hover:underline">
-                    Adjuntar Foto / Documento de Evidencia
-                    <input
-                      type="file"
-                      accept="image/*,.pdf"
-                      onChange={e => {
-                        if(e.target.files && e.target.files[0]) {
-                          setArchivoEvidencia(e.target.files[0]);
-                          setNombreArchivoGuardado(e.target.files[0].name);
-                        }
-                      }}
-                      className="hidden"
-                    />
+                <div className="p-3 border border-gray-200 rounded-xl bg-gray-50 space-y-2 text-left">
+                  <label className="block text-xs font-bold text-teal-800 flex items-center gap-1.5">
+                    <ExternalLink size={14} /> Enlace del Respaldo (Google Drive / OneDrive)
                   </label>
-                  {archivoEvidencia || nombreArchivoGuardado ? (
-                    <p className="text-[11px] text-emerald-700 font-bold">📄 {archivoEvidencia ? archivoEvidencia.name : nombreArchivoGuardado}</p>
-                  ) : (
-                    <p className="text-[10px] text-gray-400">Archivos permitidos: JPG, PNG, PDF (Opcional)</p>
-                  )}
+                  <input
+                    type="url"
+                    placeholder="Pega aquí el enlace compartido (ej: https://drive.google.com/...)"
+                    value={nombreArchivoGuardado || ''}
+                    onChange={e => setNombreArchivoGuardado(e.target.value)}
+                    className="w-full border rounded-lg p-2 bg-white text-xs outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  <p className="text-[10px] text-gray-500">Sube la foto o PDF a tu Google Drive y pega el enlace de acceso público aquí.</p>
                 </div>
               )}
 
@@ -940,7 +929,7 @@ function DashboardApp({ user, onLogout }) {
         </div>
       )}
 
-      {/* MODAL DETALLE CON PERSISTENCIA DE EVIDENCIA */}
+      {/* MODAL DETALLE CON ENLACE DE EVIDENCIA INTERACTIVO */}
       {registroDetalle && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3 max-h-[90vh] overflow-y-auto">
@@ -952,35 +941,36 @@ function DashboardApp({ user, onLogout }) {
             <p><strong>Actividad / Informe:</strong> {registroDetalle.actividad}</p>
             <p><strong>Estado Actual:</strong> {renderBadgeEstado(registroDetalle.estado)}</p>
 
-            {/* SECCIÓN DE EVIDENCIA ADJUNTA DINÁMICA */}
+            {/* SECCIÓN DE EVIDENCIA CON ENLACE DIRECTO */}
             <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-gray-700 flex items-center gap-1.5">
-                  <Paperclip size={14} className="text-teal-700" /> Evidencia Adjunta:
+                  <Paperclip size={14} className="text-teal-700" /> Enlace de Evidencia:
                 </span>
-                <span className="text-[10px] font-bold text-emerald-700">
-                  {Number(registroDetalle.tiene_evidencia) > 0 || registroDetalle.nombre_archivo_evidencia ? 'Archivo adjunto' : 'Sin adjunto'}
+                <span className={`text-[10px] font-bold ${registroDetalle.nombre_archivo_evidencia ? 'text-emerald-700' : 'text-gray-400'}`}>
+                  {registroDetalle.nombre_archivo_evidencia ? 'Enlace registrado' : 'Sin enlace'}
                 </span>
               </div>
 
-              {Number(registroDetalle.tiene_evidencia) > 0 || registroDetalle.nombre_archivo_evidencia ? (
+              {registroDetalle.nombre_archivo_evidencia ? (
                 <div className="space-y-2">
                   <div className="bg-white p-2.5 rounded-lg border flex items-center justify-between shadow-sm">
-                    <span className="text-[11px] font-medium text-teal-800 truncate">
-                      {registroDetalle.nombre_archivo_evidencia || 'evidencia_respaldo_trabajo.png'}
+                    <span className="text-[11px] font-medium text-teal-800 truncate max-w-[220px]" title={registroDetalle.nombre_archivo_evidencia}>
+                      {registroDetalle.nombre_archivo_evidencia}
                     </span>
                     <a
-                      href="#ver-evidencia"
-                      onClick={(e) => { e.preventDefault(); alert("Vista previa o descarga de la evidencia vinculada para auditoría y respaldo en Google Drive."); }}
-                      className="text-blue-600 hover:underline flex items-center gap-1 font-bold text-[11px]"
+                      href={registroDetalle.nombre_archivo_evidencia.startsWith('http') ? registroDetalle.nombre_archivo_evidencia : `https://${registroDetalle.nombre_archivo_evidencia}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline flex items-center gap-1 font-bold text-[11px] whitespace-nowrap"
                     >
-                      Ver Archivo <ExternalLink size={12} />
+                      Abrir Enlace <ExternalLink size={12} />
                     </a>
                   </div>
-                  <p className="text-[10px] text-gray-500 italic">📁 El archivo está vinculado correctamente y listo para su sincronización con la carpeta de Google Drive.</p>
+                  <p className="text-[10px] text-gray-500 italic">🔗 Enlace de respaldo vinculado correctamente en la base de datos.</p>
                 </div>
               ) : (
-                <p className="text-[11px] text-gray-400 italic">No se ha adjuntado ninguna foto o documento de evidencia para este registro.</p>
+                <p className="text-[11px] text-gray-400 italic">No se ha agregado ningún enlace de evidencia para este registro.</p>
               )}
             </div>
 
