@@ -260,7 +260,7 @@ function DashboardApp({ user, onLogout }) {
     if (!file) return;
 
     if (!registroId) {
-      alert("⚠️ Primero debes guardar el registro antes de adjuntar evidencia.");
+      alert("⚠️ Primero debes guardar el registro antes de adjuntar evidencia física.");
       return;
     }
 
@@ -624,133 +624,207 @@ function DashboardApp({ user, onLogout }) {
                     <tr key={r.id} className="border-b hover:bg-gray-50">
                       <td className="p-3 whitespace-nowrap"><div className="font-medium text-gray-800">{r.fecha}</div><div className="text-[11px] text-gray-500">{r.hora_inicio && r.hora_termino ? `⏰ ${r.hora_inicio} a ${r.hora_termino}` : 'Sin horario'}</div></td>
                       {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
-                      <td className="p-3 truncate max-w-xs">{r.actividad} {(Number(r.tiene_evidencia) > 0 || r.nombre_archivo_evidencia) && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee enlace de evidencia" />}</td>
-                      <td className="p-3 font-bold text-gray-700 whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs</td>
+                      <td className="p-3 truncate max-w-xs">{r.actividad} {(Number(r.tiene_evidencia) > 0 || r.nombre_archivo_evidencia) && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee archivo de evidencia" />}</td>
+                      <td className="p-3 font-bold text-gray-700 whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs ({r.horas_generadas_minutos || 0} min)</td>
                       <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
-                      <td className="p-3 text-center whitespace-nowrap">
-                        <button onClick={() => verDetallesRegistro(r.id)} className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition mr-1" title="Ver detalles"><Eye size={15} /></button>
-                        <button onClick={() => abrirEdicion(r)} className="p-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition" title="Editar"><Edit size={15} /></button>
+                      <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
+                          <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600 transition" title="Ver Detalle"><Eye size={16} /></button>
+
+                          {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
+                            <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition shadow-sm" title="Adjuntar evidencia y finalizar">
+                              <Check size={14} /> Finalizar / Evidencia
+                            </button>
+                          )}
+
+                          {(!isAdmin && r.estado === 'Pendiente') && (
+                            <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
+                          )}
+
+                          {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
+                            <>
+                              <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">
+                                {r.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Cambio' : 'Aprobar'}
+                              </button>
+                              <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded text-[11px] font-medium transition">Rechazar</button>
+                            </>
+                          )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
             {totalPaginas > 1 && (
               <div className="p-3 bg-gray-50 border-t flex justify-between items-center text-xs">
-                <button onClick={() => setPaginaActual(p => Math.max(p - 1, 1))} disabled={paginaActual === 1} className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1"><ChevronLeft size={14}/> Anterior</button>
-                <span>Página {paginaActual} de {totalPaginas}</span>
-                <button onClick={() => setPaginaActual(p => Math.min(p + 1, totalPaginas))} disabled={paginaActual === totalPaginas} className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1">Siguiente <ChevronRight size={14}/></button>
+                <button
+                  disabled={paginaActual === 1}
+                  onClick={() => setPaginaActual(p => Math.max(p - 1, 1))}
+                  className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
+                >
+                  <ChevronLeft size={14} /> Anterior
+                </button>
+                <span className="text-gray-600 font-bold">Página {paginaActual} de {totalPaginas}</span>
+                <button
+                  disabled={paginaActual === totalPaginas}
+                  onClick={() => setPaginaActual(p => Math.min(p + 1, totalPaginas))}
+                  className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
+                >
+                  Siguiente <ChevronRight size={14} />
+                </button>
               </div>
             )}
           </div>
         </div>
       );
-    } else if (activeTab === 'registros') {
+    }
+
+    if (activeTab === 'registros') {
+        return (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
+                <div className="p-3.5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                  <h3 className="font-bold text-gray-800">Historial General de Trabajos</h3>
+                  <span className="text-gray-400 text-[11px]">Mostrando {registrosActuales.length} de {rawRegistros.length} registros</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-white border-b text-gray-500">
+                          <th className="p-3 whitespace-nowrap">Fecha</th>
+                          {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
+                          <th className="p-3">Actividad</th>
+                          <th className="p-3 whitespace-nowrap">Tiempo</th>
+                          <th className="p-3 whitespace-nowrap">Estado</th>
+                          <th className="p-3 text-center whitespace-nowrap">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                      {rawRegistros.slice(indicePrimerRegistro, indiceUltimoRegistro).map(r => (
+                          <tr key={r.id} className="border-b hover:bg-gray-50">
+                              <td className="p-3 whitespace-nowrap">{r.fecha}</td>
+                              {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
+                              <td className="p-3">{r.actividad}</td>
+                              <td className="p-3 font-bold whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs</td>
+                              <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
+                              <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
+                                  <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600" title="Ver Detalle"><Eye size={16} /></button>
+
+                                  {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
+                                    <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1">
+                                      <Check size={14} /> Finalizar
+                                    </button>
+                                  )}
+
+                                  {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
+                                    <>
+                                      <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
+                                      <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Rechazar</button>
+                                    </>
+                                  )}
+                              </td>
+                          </tr>
+                      ))}
+                      </tbody>
+                  </table>
+                </div>
+
+                {Math.ceil(rawRegistros.length / registrosPorPagina) > 1 && (
+                  <div className="p-3 bg-gray-50 border-t flex justify-between items-center text-xs">
+                    <button
+                      disabled={paginaActual === 1}
+                      onClick={() => setPaginaActual(p => Math.max(p - 1, 1))}
+                      className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
+                    >
+                      <ChevronLeft size={14} /> Anterior
+                    </button>
+                    <span className="text-gray-600 font-bold">Página {paginaActual} de {Math.ceil(rawRegistros.length / registrosPorPagina)}</span>
+                    <button
+                      disabled={paginaActual === Math.ceil(rawRegistros.length / registrosPorPagina)}
+                      onClick={() => setPaginaActual(p => Math.min(p + 1, Math.ceil(rawRegistros.length / registrosPorPagina)))}
+                      className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
+                    >
+                      Siguiente <ChevronRight size={14} />
+                    </button>
+                  </div>
+                )}
+            </div>
+        );
+    }
+
+    if (activeTab === 'compensaciones') {
       return (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-800">Gestión de Registros de Horas</h2>
-            <button onClick={() => { setEditingId(null); setEditingEstado('Pendiente'); setFormData({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento }); setIntervinientes([]); setNombreArchivoGuardado(null); setShowModal(true); }} className={`px-4 py-2 text-white font-bold rounded-lg shadow transition flex items-center gap-2 text-xs ${isAdmin ? 'bg-teal-700 hover:bg-teal-800' : 'bg-blue-600 hover:bg-blue-700'}`}><Plus size={16} /> Nuevo Registro</button>
+        <div className="space-y-4">
+          <div className="flex justify-between items-center bg-white p-3.5 rounded-xl shadow-sm border border-gray-100">
+            <div>
+              <h2 className="text-base font-bold text-gray-800">
+                {isAdmin ? 'Historial de Compensaciones' : 'Mi Historial de Compensaciones'}
+              </h2>
+              {!isAdmin && <p className="text-gray-400 text-xs">Detalle de horas descontadas de tu saldo disponible</p>}
+            </div>
+            {isAdmin && <button onClick={() => setShowModalComp(true)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 flex gap-1.5 items-center"><Plus size={16} /> Registrar Compensación</button>}
           </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-gray-50 border-b text-gray-500">
-                  <th className="p-3">Fecha</th>
-                  {isAdmin && <th className="p-3">Auditor</th>}
-                  <th className="p-3">Actividad</th>
-                  <th className="p-3">Horario</th>
-                  <th className="p-3">Total</th>
-                  <th className="p-3">Estado</th>
-                  <th className="p-3 text-center">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {registros.map(r => (
-                  <tr key={r.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 font-medium">{r.fecha}</td>
-                    {isAdmin && <td className="p-3 font-medium">{r.auditor}</td>}
-                    <td className="p-3">{r.actividad}</td>
-                    <td className="p-3">{r.hora_inicio} - {r.hora_termino}</td>
-                    <td className="p-3 font-bold">{formatTime(r.horas_generadas_minutos)} hrs</td>
-                    <td className="p-3">{renderBadgeEstado(r.estado)}</td>
-                    <td className="p-3 text-center">
-                      <button onClick={() => verDetallesRegistro(r.id)} className="p-1.5 bg-blue-50 text-blue-600 rounded-lg mr-1 hover:bg-blue-100"><Eye size={15}/></button>
-                      <button onClick={() => abrirEdicion(r)} className="p-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100"><Edit size={15}/></button>
-                    </td>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-white border-b text-gray-500">
+                    <th className="p-3 whitespace-nowrap">Fecha</th>
+                    {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
+                    <th className="p-3">Motivo</th>
+                    <th className="p-3 whitespace-nowrap">Horas Descontadas</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {compensaciones.length === 0 ? (
+                    <tr><td colSpan="4" className="p-4 text-center text-gray-400">No hay compensaciones registradas.</td></tr>
+                  ) : (
+                    compensaciones.map(c => (
+                      <tr key={c.id} className="border-b hover:bg-gray-50">
+                        <td className="p-3 whitespace-nowrap">{c.fecha}</td>
+                        {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{c.auditor}</td>}
+                        <td className="p-3">{c.motivo}</td>
+                        <td className="p-3 font-bold text-red-600 whitespace-nowrap">-{formatTime(c.horas_compensadas_minutos).replace('-', '')} hrs ({c.horas_compensadas_minutos || 0} min)</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       );
-    } else if (activeTab === 'compensaciones') {
+    }
+
+    if (activeTab === 'usuarios' && isAdmin) {
       return (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-800">Compensaciones de Horas</h2>
-            {isAdmin && <button onClick={() => setShowModalComp(true)} className="px-4 py-2 bg-teal-700 text-white font-bold rounded-lg hover:bg-teal-800 transition flex items-center gap-2 text-xs"><Plus size={16}/> Registrar Compensación</button>}
+        <div className="space-y-4">
+          <div className="flex justify-between items-center bg-white p-3.5 rounded-xl shadow-sm border border-gray-100">
+            <div><h2 className="text-base font-bold text-gray-800">Administración de Usuarios</h2></div>
+            <button onClick={abrirCreacionUsuario} className={`${themeBg} text-white px-3 py-1.5 rounded-lg text-xs font-medium ${themeHover} flex gap-1.5 items-center`}><UserPlus size={16} /> Nuevo Usuario</button>
           </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-gray-50 border-b text-gray-500">
-                  <th className="p-3">Fecha</th>
-                  <th className="p-3">Auditor</th>
-                  <th className="p-3">Horas Descontadas</th>
-                  <th className="p-3">Motivo</th>
-                  <th className="p-3">Observaciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {compensaciones.length === 0 ? (<tr><td colSpan="5" className="p-4 text-center text-gray-500">No hay compensaciones registradas</td></tr>) : compensaciones.map(c => (
-                  <tr key={c.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 font-medium">{c.fecha}</td>
-                    <td className="p-3 font-medium">{c.auditor}</td>
-                    <td className="p-3 font-bold text-blue-600">{formatTime(c.horas_compensadas_minutos)} hrs</td>
-                    <td className="p-3">{c.motivo}</td>
-                    <td className="p-3 text-gray-500">{c.observaciones || 'Sin observaciones'}</td>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-white border-b text-gray-500">
+                    <th className="p-3 whitespace-nowrap">Nombre</th>
+                    <th className="p-3 whitespace-nowrap">Correo</th>
+                    <th className="p-3 whitespace-nowrap">Rol</th>
+                    <th className="p-3 text-center whitespace-nowrap">Acción</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      );
-    } else if (activeTab === 'auditores' && isAdmin) {
-      return (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-800">Gestión de Usuarios y Auditores</h2>
-            <button onClick={abrirCreacionUsuario} className="px-4 py-2 bg-teal-700 text-white font-bold rounded-lg hover:bg-teal-800 transition flex items-center gap-2 text-xs"><UserPlus size={16}/> Nuevo Usuario</button>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-gray-50 border-b text-gray-500">
-                  <th className="p-3">Nombre</th>
-                  <th className="p-3">Correo</th>
-                  <th className="p-3">Cargo / Departamento</th>
-                  <th className="p-3">Rol</th>
-                  <th className="p-3 text-center">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {usuariosDB.map(u => (
-                  <tr key={u.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 font-bold text-gray-800">{u.nombre}</td>
-                    <td className="p-3 text-gray-600">{u.email}</td>
-                    <td className="p-3">{u.cargo || u.departamento || 'General'}</td>
-                    <td className="p-3">{renderBadgeRol(u.rol)}</td>
-                    <td className="p-3 text-center">
-                      <button onClick={() => abrirEdicionUsuario(u)} className="p-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100"><Edit size={15}/></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {usuariosDB.map(u => (
+                    <tr key={u.id} className="border-b hover:bg-gray-50">
+                      <td className="p-3 font-medium whitespace-nowrap">{u.nombre}</td>
+                      <td className="p-3 whitespace-nowrap">{u.email}</td>
+                      <td className="p-3 whitespace-nowrap">{renderBadgeRol(u.rol)}</td>
+                      <td className="p-3 text-center whitespace-nowrap"><button onClick={() => abrirEdicionUsuario(u)} className="text-blue-600 hover:underline font-medium">Editar</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       );
@@ -761,237 +835,301 @@ function DashboardApp({ user, onLogout }) {
     <div className="min-h-screen bg-gray-50 flex">
       <aside className={`w-64 ${themeBg} text-white flex flex-col justify-between hidden md:flex shadow-xl`}>
         <div>
-          <div className="p-5 flex items-center gap-3 border-b border-white/10">
-            <img src={LOGO_URL} alt="Logo" className="w-9 h-9 object-contain bg-white rounded-lg p-1" />
-            <div><h1 className="font-bold text-sm leading-tight">CONTROL DE AUDITORÍAS</h1><p className="text-[10px] text-white/70">Remesas ASACh</p></div>
+          <div className="p-5 border-b border-teal-700/50 flex items-center gap-3">
+            <img src={LOGO_URL} alt="Logo" className="w-10 h-10 object-contain bg-white rounded-lg p-1" />
+            <div><h1 className="font-bold text-sm leading-tight">AUDITORÍAS ASACh</h1><span className="text-[10px] text-teal-200">Panel de Administración</span></div>
           </div>
-          <nav className="p-3 space-y-1 text-xs">
-            <button onClick={() => setActiveTab('dashboard')} className={menuClass('dashboard')}><LayoutDashboard size={16} /> Dashboard General</button>
-            <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><Clock size={16} /> Registros de Horas</button>
-            <button onClick={() => setActiveTab('compensaciones')} className={menuClass('compensaciones')}><FileText size={16} /> Compensaciones</button>
-            {isAdmin && <button onClick={() => setActiveTab('auditores')} className={menuClass('auditores')}><Users size={16} /> Gestión de Auditores</button>}
+          <nav className="p-3 space-y-1">
+            <button onClick={() => setActiveTab('dashboard')} className={menuClass('dashboard')}><LayoutDashboard size={18} /> Dashboard Visual</button>
+            <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><FileText size={18} /> Tablas de Registros</button>
+            <button onClick={() => setActiveTab('compensaciones')} className={menuClass('compensaciones')}><Clock size={18} /> Compensaciones</button>
+            {isAdmin && <button onClick={() => setActiveTab('usuarios')} className={menuClass('usuarios')}><Users size={18} /> Usuarios</button>}
           </nav>
         </div>
-        <div className="p-4 border-t border-white/10">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs">{user.nombre ? user.nombre.charAt(0) : 'U'}</div>
-            <div className="overflow-hidden"><p className="font-bold truncate text-xs">{user.nombre}</p><p className="text-[10px] text-white/70 truncate">{user.rol}</p></div>
-          </div>
-          <button onClick={onLogout} className="w-full flex items-center justify-center gap-2 bg-red-600/80 hover:bg-red-600 text-white py-2 rounded-lg transition text-xs font-bold"><LogOut size={14} /> Cerrar Sesión</button>
+        <div className="p-4 border-t border-teal-700/50 flex items-center justify-between text-xs">
+          <div><p className="font-bold">{user.nombre}</p><p className="text-[11px] text-teal-200">{user.rol}</p></div>
+          <button onClick={onLogout} className="p-2 hover:bg-teal-900 rounded-lg text-teal-200 hover:text-white transition flex items-center gap-1" title="Cerrar Sesión"><LogOut size={16} /> Cerrar Sesión</button>
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b h-16 flex items-center justify-between px-6 shadow-sm">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-gray-800 text-sm">Panel de Control</span>
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <header className="bg-white border-b border-gray-100 p-4 flex justify-between items-center shadow-sm">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Hola, {user.nombre ? user.nombre.split(' ')[0] : 'Usuario'}</h2>
+            <p className="text-xs text-gray-400">Sistema de Control de Auditorías de remesa ASACh</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <div className="relative">
-              <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-full transition">
-                <Bell size={20} />
-                {solicitudesPendientes.length > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center font-bold">{solicitudesPendientes.length}</span>}
+              <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="relative p-2 text-gray-600 bg-amber-50 hover:bg-amber-100 rounded-full transition shadow-sm">
+                <Bell size={20} className="text-amber-600" />
+                {solicitudesPendientes.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-amber-500 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center font-bold shadow animate-pulse">
+                    {solicitudesPendientes.length}
+                  </span>
+                )}
               </button>
+
               {showNotificationsDropdown && (
-                <div className="absolute right-0 mt-2 w-80 bg-white border rounded-xl shadow-xl z-50 p-3 text-xs">
-                  <p className="font-bold text-gray-800 pb-2 border-b mb-2">Notificaciones ({solicitudesPendientes.length})</p>
-                  {solicitudesPendientes.length === 0 ? <p className="text-gray-400 text-center py-4">No hay notificaciones pendientes</p> : solicitudesPendientes.map((s, i) => (
-                    <div key={i} className="p-2 hover:bg-gray-50 rounded border-b last:border-b-0">
-                      <p className="font-medium text-gray-800">{isAdmin ? `Solicitud de ${s.auditor || 'Auditor'}` : 'Compensación Registrada'}</p>
-                      <p className="text-[11px] text-gray-500">{s.actividad || s.motivo} - {s.fecha}</p>
+                <div className="absolute right-0 mt-2 w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
+                  <div className="bg-teal-800 text-white p-3.5 flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Bell size={16} />
+                      <span className="font-bold text-xs">{isAdmin ? 'Solicitudes Pendientes' : 'Mis Notificaciones de Compensación'}</span>
                     </div>
-                  ))}
+                    {solicitudesPendientes.length > 0 && (
+                      <span className="bg-amber-400 text-teal-900 font-bold text-[10px] px-2 py-0.5 rounded-full">
+                        {solicitudesPendientes.length} nuevas
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto p-3 space-y-2.5 bg-gray-50">
+                    {solicitudesPendientes.length === 0 ? (
+                      <p className="text-gray-400 text-center py-6 text-xs font-medium">No hay notificaciones pendientes.</p>
+                    ) : (
+                      isAdmin ? (
+                        solicitudesPendientes.map(r => (
+                          <div
+                            key={r.id}
+                            onClick={() => { verDetallesRegistro(r.id); setShowNotificationsDropdown(false); }}
+                            className="p-3 bg-white hover:bg-teal-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
+                          >
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
+                                {r.estado === 'Revisión por Exceso de Horas' ? 'Horario Modificado' : (r.motivo || 'Auditoría')}
+                              </span>
+                              <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                            </div>
+                            <p className="font-bold text-gray-800 text-xs">{r.auditor || 'Auditor'}</p>
+                            <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
+                            <p className="text-[11px] text-gray-600 truncate mt-1 bg-gray-50 p-1.5 rounded">{r.actividad}</p>
+                            <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-teal-600 transition" />
+                          </div>
+                        ))
+                      ) : (
+                        solicitudesPendientes.map(c => (
+                          <div
+                            key={c.id}
+                            onClick={() => { setActiveTab('compensaciones'); setShowNotificationsDropdown(false); }}
+                            className="p-3 bg-white hover:bg-blue-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
+                          >
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                                Compensación aplicada
+                              </span>
+                              <span className="text-[10px] text-gray-400">{c.fecha}</span>
+                            </div>
+                            <p className="font-bold text-gray-800 text-xs">Motivo: {c.motivo}</p>
+                            <p className="text-[11px] text-red-600 font-bold mt-0.5">⏰ Descuento: -{formatTime(c.horas_compensadas_minutos)} hrs</p>
+                            <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-blue-600 transition" />
+                          </div>
+                        ))
+                      )
+                    )}
+                  </div>
+
+                  <div className="p-2.5 bg-white border-t text-center">
+                    <button
+                      onClick={() => { setActiveTab(isAdmin ? 'dashboard' : 'compensaciones'); setShowNotificationsDropdown(false); }}
+                      className="text-xs font-bold text-teal-800 hover:text-teal-900 transition"
+                    >
+                      Ver todos en el panel
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 border-l pl-4">
-              <span className="text-xs font-bold text-gray-700 hidden sm:inline">{user.nombre}</span>
-              {renderBadgeRol(user.rol)}
-            </div>
+
+            <button onClick={() => { setEditingId(null); setFormData({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento }); setNombreArchivoGuardado(null); setShowModal(true); }} className="bg-yellow-400 hover:bg-yellow-500 text-teal-900 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition">+ NUEVA PROPUESTA</button>
           </div>
         </header>
+        <div className="p-6">{renderContent()}</div>
+      </main>
 
-        <main className="flex-1 p-6 overflow-y-auto">
-          {renderContent()}
-        </main>
-      </div>
-
-      {/* MODAL DE DETALLE DE REGISTRO */}
-      {registroDetalle && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 text-xs">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-bold text-sm text-gray-800">Detalle del Registro</h3>
-              <button onClick={() => setRegistroDetalle(null)} className="text-gray-400 hover:text-gray-600 font-bold text-sm">✕</button>
-            </div>
-            <div className="space-y-2">
-              <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
-              <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
-              <p><strong>Horario:</strong> {registroDetalle.hora_inicio} - {registroDetalle.hora_termino}</p>
-              <p><strong>Tiempo Generado:</strong> {formatTime(registroDetalle.horas_generadas_minutos)} hrs</p>
-              <p><strong>Actividad:</strong> {registroDetalle.actividad}</p>
-              <p><strong>Estado Actual:</strong> {renderBadgeEstado(registroDetalle.estado)}</p>
-              {registroDetalle.evidencias && registroDetalle.evidencias.length > 0 && (
-                <div>
-                  <strong>Evidencias en la Nube (GCS):</strong>
-                  {registroDetalle.evidencias.map((ev, i) => (
-                    <div key={i} className="mt-1">
-                      <a href={ev.archivo_url} target="_blank" rel="noreferrer" className="text-blue-600 underline flex items-center gap-1 font-medium"><ExternalLink size={12}/> {ev.nombre_archivo || 'Ver archivo en Google Cloud'}</a>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            {isAdmin && (
-              <div className="flex gap-2 pt-4 border-t">
-                <button onClick={() => cambiarEstado(registroDetalle.id, 'Ejecutado')} className="flex-1 bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700 transition">Aprobar / Ejecutar</button>
-                <button onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')} className="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold hover:bg-red-700 transition">Rechazar</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* MODAL CREAR / EDITAR REGISTRO */}
+      {/* MODAL CREAR / EDITAR REGISTRO CON SUBIDA FÍSICA A GCS */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 text-xs">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-bold text-sm text-gray-800">{editingId ? 'Editar Registro de Horas' : 'Nuevo Registro de Horas'}</h3>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
+            <h3 className="font-bold text-base mb-4 text-gray-800">
+              {editingId ? (!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') ? 'Ejecutar e Informar Trabajo' : 'Editar Registro') : 'Nueva Propuesta de Horas'}
+            </h3>
+            <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
+              <div><label className="block font-medium mb-1">Fecha</label><input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
+
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Fecha</label>
-                  <input type="date" required value={formData.fecha} onChange={e => setFormData({...formData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Departamento</label>
-                  <input type="text" value={formData.departamento} onChange={e => setFormData({...formData, departamento: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Hora Inicio</label>
-                  <input type="time" required value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Hora Término</label>
-                  <input type="time" required value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-gray-600 font-medium mb-1">Actividad Realizada</label>
-                <textarea required rows="3" value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" placeholder="Describa la actividad..."></textarea>
+                <div><label className="block font-medium mb-1">Hora Inicio (HH:MM)</label><input type="time" required value={formData.hora_inicio} onChange={e => setFormData({...formData, hora_inicio: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
+                <div><label className="block font-medium mb-1">Hora Término (HH:MM)</label><input type="time" required value={formData.hora_termino} onChange={e => setFormData({...formData, hora_termino: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" /></div>
               </div>
 
-              {/* SECCIÓN DE SUBIDA DE EVIDENCIA CON GOOGLE CLOUD STORAGE */}
-              <div className="p-3 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                <label className="block font-bold text-gray-700 mb-1 flex items-center gap-1.5"><Upload size={14}/> Adjuntar Evidencia (Google Cloud Storage)</label>
-                <input type="file" onChange={(e) => handleFileUpload(e, editingId)} className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
-                {nombreArchivoGuardado && <p className="text-[11px] text-green-600 font-medium mt-1">📎 Archivo vinculado: {nombreArchivoGuardado}</p>}
+              {formData.hora_inicio && formData.hora_termino && (
+                <div className="bg-blue-50 text-blue-800 p-2.5 rounded-lg flex justify-between items-center font-medium">
+                  <span>Tiempo total calculado:</span>
+                  <span className="font-bold">{formatTime(calcularMinutos())} hrs ({calcularMinutos()} minutos)</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-medium mb-1">
+                  {!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') ? 'Informe Detallado de la Actividad Ejecutada' : 'Actividad Realizada / Propuesta'}
+                </label>
+                <textarea rows="4" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa el informe de la auditoría..."></textarea>
+              </div>
+
+              {/* SECCIÓN DE SUBIDA DE EVIDENCIA FÍSICA A GOOGLE CLOUD STORAGE */}
+              <div className="p-3 border border-dashed border-gray-300 rounded-xl bg-gray-50 space-y-2 text-left">
+                <label className="block text-xs font-bold text-teal-800 flex items-center gap-1.5">
+                  <Upload size={14} /> Adjuntar Evidencia (Google Cloud Storage)
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => handleFileUpload(e, editingId)}
+                  className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                />
+                {nombreArchivoGuardado ? (
+                  <p className="text-[11px] text-emerald-600 font-bold mt-1">📎 Archivo vinculado: {nombreArchivoGuardado}</p>
+                ) : (
+                  <p className="text-[10px] text-gray-500 italic">💡 Nota: Si vas a crear un registro nuevo, guárdalo primero para poder adjuntar y subir el archivo a la nube.</p>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition">Guardar Registro</button>
+                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold">Guardar Cambios</button>
+                {!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado') && (
+                  <button type="button" onClick={(e) => handleSubmit(e, true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1.5 shadow">
+                    <Check size={16} /> Finalizar Trabajo
+                  </button>
+                )}
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL REGISTRAR COMPENSACIÓN */}
       {showModalComp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-bold text-sm text-gray-800">Registrar Compensación de Horas</h3>
-              <button onClick={() => setShowModalComp(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-4">
+            <h3 className="font-bold text-base text-gray-800">Registrar Compensación (Descuento de Horas)</h3>
             <form onSubmit={handleCompSubmit} className="space-y-3">
               <div>
-                <label className="block text-gray-600 font-medium mb-1">Seleccionar Auditor</label>
-                <select required value={compData.usuario_id} onChange={e => setCompData({...compData, usuario_id: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none">
-                  <option value="">-- Seleccione --</option>
-                  {usuariosDB.filter(u => u.rol !== 'Administrador').map(u => (
-                    <option key={u.id} value={u.id}>{u.nombre} (Saldo disp: {formatTime(obtenerSaldoAuditorSeleccionado(u.id))})</option>
-                  ))}
+                <label className="font-medium">Seleccionar Auditor</label>
+                <select required value={compData.usuario_id} onChange={e => setCompData({...compData, usuario_id: e.target.value})} className="w-full border rounded p-2 bg-gray-50">
+                  <option value="">-- Seleccione Auditor --</option>
+                  {auditoresSoloAuditores.map(u => (<option key={u.id} value={u.id}>{u.nombre}</option>))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Fecha</label>
-                  <input type="date" required value={compData.fecha} onChange={e => setCompData({...compData, fecha: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
+
+              {compData.usuario_id && (
+                <div className={`p-3 rounded-xl border flex items-center justify-between ${obtenerSaldoAuditorSeleccionado(compData.usuario_id) > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={16} />
+                    <span className="font-medium">Horas pendientes a compensar:</span>
+                  </div>
+                  <span className="text-sm font-extrabold">{formatTime(obtenerSaldoAuditorSeleccionado(compData.usuario_id))} hrs ({obtenerSaldoAuditorSeleccionado(compData.usuario_id)} min)</span>
                 </div>
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Horas (Ej: 02:30)</label>
-                  <input type="text" required placeholder="HH:MM" value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
-                </div>
-              </div>
+              )}
+
+              <div><label className="font-medium">Fecha</label><input type="date" required value={compData.fecha} onChange={e => setCompData({...compData, fecha: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
+              <div><label className="font-medium">Tiempo a Descontar (Ej: 01:30 para 1h 30m)</label><input type="text" placeholder="HH:MM" required value={compData.horas} onChange={e => setCompData({...compData, horas: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
+
               <div>
-                <label className="block text-gray-600 font-medium mb-1">Motivo</label>
-                <input type="text" value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
+                <label className="font-medium">Motivo</label>
+                <select value={compData.motivo} onChange={e => setCompData({...compData, motivo: e.target.value})} className="w-full border rounded p-2 bg-gray-50">
+                  <option value="Salida anticipada">Salida anticipada</option>
+                  <option value="Medio día">Medio día</option>
+                  <option value="Día libre">Día libre</option>
+                </select>
               </div>
-              <div>
-                <label className="block text-gray-600 font-medium mb-1">Observaciones</label>
-                <textarea rows="2" value={compData.observaciones} onChange={e => setCompData({...compData, observaciones: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none"></textarea>
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t">
-                <button type="button" onClick={() => setShowModalComp(false)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg font-bold">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold hover:bg-teal-800">Registrar y Notificar</button>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowModalComp(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
+                <button type="submit" className="px-3 py-1.5 bg-green-600 text-white rounded font-bold">Registrar y Notificar</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL CREAR / EDITAR USUARIO */}
+      {/* MODAL DETALLE CON ENLACE DE GCS */}
+      {registroDetalle && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-bold text-base text-gray-800">Detalle del Trabajo Propuesto</h3>
+            <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
+            <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
+            <p><strong>Horario:</strong> {registroDetalle.hora_inicio && registroDetalle.hora_termino ? `${registroDetalle.hora_inicio} - ${registroDetalle.hora_termino}` : 'Sin horario'}</p>
+            <p><strong>Tiempo Total:</strong> {formatTime(registroDetalle.horas_generadas_minutos)} hrs ({registroDetalle.horas_generadas_minutos || 0} min)</p>
+            <p><strong>Actividad / Informe:</strong> {registroDetalle.actividad}</p>
+            <p><strong>Estado Actual:</strong> {renderBadgeEstado(registroDetalle.estado)}</p>
+
+            <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-gray-700 flex items-center gap-1.5">
+                  <Paperclip size={14} className="text-teal-700" /> Evidencia en la Nube (GCS):
+                </span>
+                <span className={`text-[10px] font-bold ${registroDetalle.evidencias && registroDetalle.evidencias.length > 0 ? 'text-emerald-700' : 'text-gray-400'}`}>
+                  {registroDetalle.evidencias && registroDetalle.evidencias.length > 0 ? 'Archivo adjunto' : 'Sin adjuntos'}
+                </span>
+              </div>
+
+              {registroDetalle.evidencias && registroDetalle.evidencias.length > 0 ? (
+                registroDetalle.evidencias.map((ev, i) => (
+                  <div key={i} className="bg-white p-2.5 rounded-lg border flex items-center justify-between shadow-sm">
+                    <span className="text-[11px] font-medium text-teal-800 truncate max-w-[220px]">
+                      {ev.nombre_archivo || 'Archivo de evidencia'}
+                    </span>
+                    <a
+                      href={ev.archivo_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline flex items-center gap-1 font-bold text-[11px] whitespace-nowrap"
+                    >
+                      Abrir Archivo <ExternalLink size={12} />
+                    </a>
+                  </div>
+                ))
+              ) : (
+                <p className="text-[11px] text-gray-400 italic">No se ha subido ningún archivo de evidencia a Google Cloud para este registro.</p>
+              )}
+            </div>
+
+            {isAdmin && (registroDetalle.estado === 'Pendiente' || registroDetalle.estado === 'Revisión por Exceso de Horas') && (
+              <div className="flex gap-2 pt-3 border-t mt-3">
+                <button onClick={() => cambiarEstado(registroDetalle.id, 'Aprobado (Pendiente de Ejecución)')} className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold">
+                  {registroDetalle.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Cambio' : 'Aprobar'}
+                </button>
+                <button onClick={() => cambiarEstado(registroDetalle.id, 'Rechazado')} className="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold">Rechazar</button>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button onClick={() => setRegistroDetalle(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showModalUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-bold text-sm text-gray-800">{editingUserId ? 'Editar Usuario' : 'Nuevo Usuario'}</h3>
-              <button onClick={() => setShowModalUser(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-4">
+            <h3 className="font-bold text-base text-gray-800">{editingUserId ? 'Editar Usuario' : 'Nuevo Usuario'}</h3>
             {userError && <div className="bg-red-50 text-red-600 p-2 rounded">{userError}</div>}
             <form onSubmit={handleUserSubmit} className="space-y-3">
+              <div><label className="font-medium">Nombre</label><input type="text" required value={userData.nombre} onChange={e => setUserData({...userData, nombre: e.target.value})} className="w-full border rounded p-2" /></div>
+              <div><label className="font-medium">Correo</label><input type="email" required value={userData.email} onChange={e => setUserData({...userData, email: e.target.value})} className="w-full border rounded p-2" /></div>
+              <div><label className="font-medium">Contraseña</label><input type="password" value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded p-2" placeholder="Dejar en blanco para conservar contraseña" /></div>
+              <div><label className="font-medium">Confirmar Contraseña</label><input type="password" value={userData.confirmPassword} onChange={e => setUserData({...userData, confirmPassword: e.target.value})} className="w-full border rounded p-2" placeholder="Confirmar contraseña" /></div>
               <div>
-                <label className="block text-gray-600 font-medium mb-1">Nombre Completo</label>
-                <input type="text" required value={userData.nombre} onChange={e => setUserData({...userData, nombre: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
+                <label className="font-medium">Rol</label>
+                <select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded p-2 bg-gray-50">
+                  <option value="Auditor">Auditor</option>
+                  <option value="Analista">Analista</option>
+                  <option value="Administrador">Administrador</option>
+                </select>
               </div>
-              <div>
-                <label className="block text-gray-600 font-medium mb-1">Correo Electrónico</label>
-                <input type="email" required value={userData.email} onChange={e => setUserData({...userData, email: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Contraseña</label>
-                  <input type="password" placeholder={editingUserId ? "Dejar en blanco para mantener" : "••••••••"} value={userData.password} onChange={e => setUserData({...userData, password: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Confirmar</label>
-                  <input type="password" placeholder="••••••••" value={userData.confirmPassword} onChange={e => setUserData({...userData, confirmPassword: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Departamento</label>
-                  <input type="text" value={userData.departamento} onChange={e => setUserData({...userData, departamento: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-gray-600 font-medium mb-1">Rol</label>
-                  <select value={userData.rol} onChange={e => setUserData({...userData, rol: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50 outline-none">
-                    <option value="Auditor">Auditor</option>
-                    <option value="Analista">Analista</option>
-                    <option value="Administrador">Administrador</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t">
-                <button type="button" onClick={() => setShowModalUser(false)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg font-bold">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-teal-700 text-white rounded-lg font-bold hover:bg-teal-800">Guardar Usuario</button>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowModalUser(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
+                <button type="submit" className="px-3 py-1.5 bg-teal-700 text-white rounded font-bold">Guardar</button>
               </div>
             </form>
           </div>
@@ -1002,22 +1140,23 @@ function DashboardApp({ user, onLogout }) {
 }
 
 export default function App() {
-  const [user, setUser] = useState(() => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
     const savedUser = localStorage.getItem('user');
-    return savedUser ? JSON.parse(savedUser) : null;
-  });
+    if (savedUser) setUser(JSON.parse(savedUser));
+    setLoading(false);
+  }, []);
 
   const handleLogin = (userData) => setUser(userData);
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
-  };
+  const handleLogout = () => { localStorage.clear(); setUser(null); };
 
+  if (loading) return null;
   return (
     <HashRouter>
       <Routes>
-        <Route path="*" element={!user ? <LoginScreen onLogin={handleLogin} /> : <DashboardApp user={user} onLogout={handleLogout} />} />
+        <Route path="*" element={user ? <DashboardApp user={user} onLogout={handleLogout} /> : <LoginScreen onLogin={handleLogin} />} />
       </Routes>
     </HashRouter>
   );
