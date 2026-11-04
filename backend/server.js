@@ -1,22 +1,27 @@
 const express = require('express');
 const cors = require('cors');
 const pool = require('./db');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const { Storage } = require('@google-cloud/storage');
+const fileUpload = require('express-fileupload');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-const upload = multer({ dest: uploadDir });
-app.use('/uploads', express.static(uploadDir));
+app.use(fileUpload()); // Habilita la recepción de archivos en req.files
 
 const SECRET_KEY = process.env.SECRET_KEY || "FirmaSecretaBancoHoras2026";
+
+// ---------------------------------------------------------
+// CONFIGURACIÓN DE GOOGLE CLOUD STORAGE
+// ---------------------------------------------------------
+const storage = new Storage({
+  keyFilename: './gcp-key', // Asegúrate de que coincida con el nombre de tu archivo JSON en la carpeta backend
+});
+
+const bucketName = process.env.GCP_BUCKET_NAME || 'auditorias-asach-evidencias'; // Reemplaza o define tu variable de entorno
+const bucket = storage.bucket(bucketName);
 
 // Login
 app.post('/api/login', async (req, res) => {
@@ -195,16 +200,56 @@ app.put('/api/registros/:id/estado', async (req, res) => {
     }
 });
 
-app.post('/api/evidencias', upload.single('archivo'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'Sin archivo' });
-    const url = `/uploads/${req.file.filename}`;
+// ---------------------------------------------------------
+// RUTA DE EVIDENCIAS CON GOOGLE CLOUD STORAGE
+// ---------------------------------------------------------
+app.post('/api/evidencias', async (req, res) => {
+    if (!req.files || !req.files.archivo) {
+        return res.status(400).json({ error: 'No se ha adjuntado ningún archivo.' });
+    }
+
+    const archivo = req.files.archivo;
+    const registro_id = req.body.registro_id;
+
+    if (!registro_id) {
+        return res.status(400).json({ error: 'Falta el ID del registro para asociar la evidencia.' });
+    }
+
     try {
-        await pool.query(
-            'INSERT INTO evidencias (registro_id, archivo_url, nombre_archivo) VALUES ($1, $2, $3)', 
-            [req.body.registro_id, url, req.file.originalname]
-        );
-        res.json({ success: true, url });
+        const nombreUnico = `evidencias/${Date.now()}-${archivo.name}`;
+        const blob = bucket.file(nombreUnico);
+
+        const blobStream = blob.createWriteStream({
+            resumable: false,
+            metadata: {
+                contentType: archivo.mimetype,
+            },
+        });
+
+        blobStream.on('error', (err) => {
+            console.error('Error al subir a Google Cloud:', err);
+            return res.status(500).json({ error: 'Error al subir el archivo a Google Cloud.' });
+        });
+
+        blobStream.on('finish', async () => {
+            // URL pública permanente del archivo en Google Cloud Storage
+            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
+            
+            try {
+                await pool.query(
+                    'INSERT INTO evidencias (registro_id, archivo_url, nombre_archivo) VALUES ($1, $2, $3)', 
+                    [registro_id, publicUrl, archivo.name]
+                );
+                return res.json({ success: true, url: publicUrl });
+            } catch (dbErr) {
+                console.error('Error al guardar en base de datos:', dbErr);
+                return res.status(500).json({ error: 'Archivo subido a la nube, pero falló al registrar en la base de datos.' });
+            }
+        });
+
+        blobStream.end(archivo.data);
     } catch (err) {
+        console.error('Error interno:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -289,4 +334,4 @@ app.get('/api/compensaciones', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Backend seguro con PostgreSQL ejecutándose en el puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Backend seguro con PostgreSQL y GCS ejecutándose en el puerto ${PORT}`));
