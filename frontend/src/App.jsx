@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
-import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight, Check, Upload, ExternalLink, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight, Check, Upload, ExternalLink, ChevronLeft, Trash2 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
@@ -110,7 +110,8 @@ function DashboardApp({ user, onLogout }) {
 
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
-  const [nombreArchivoGuardado, setNombreArchivoGuardado] = useState(null);
+  const [evidenciasGuardadas, setEvidenciasGuardadas] = useState([]);
+  const [subiendoArchivo, setSubiendoArchivo] = useState(false);
 
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
   const [compData, setCompData] = useState({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' });
@@ -211,9 +212,6 @@ function DashboardApp({ user, onLogout }) {
         if(res.ok) {
           const data = await res.json();
           setRegistroDetalle(data);
-          if (data.nombre_archivo_evidencia) {
-            setNombreArchivoGuardado(data.nombre_archivo_evidencia);
-          }
         }
     } catch(err) { alert("⚠️ Error de conexión."); }
   };
@@ -224,13 +222,13 @@ function DashboardApp({ user, onLogout }) {
       setMinutosOriginales(r.horas_generadas_minutos || 0);
       setHorarioOriginal({ inicio: r.hora_inicio || '', termino: r.hora_termino || '' });
       setFormData({ fecha: r.fecha, hora_inicio: r.hora_inicio || '', hora_termino: r.hora_termino || '', motivo: r.motivo, actividad: r.actividad, departamento: r.departamento || user.departamento });
-      setNombreArchivoGuardado(r.nombre_archivo_evidencia || null);
+      setEvidenciasGuardadas([]);
       try {
           const res = await fetch(`${API_URL}/api/registros/${r.id}`);
           if(res.ok) {
               const data = await res.json();
               setIntervinientes(data.intervinientes || []);
-              if(data.nombre_archivo_evidencia) setNombreArchivoGuardado(data.nombre_archivo_evidencia);
+              setEvidenciasGuardadas(data.evidencias || []);
           }
       } catch(e) {}
       setShowModal(true);
@@ -254,13 +252,14 @@ function DashboardApp({ user, onLogout }) {
     return min2 - min1;
   };
 
-  // FUNCIÓN PARA SUBIR ARCHIVOS DIRECTAMENTE A GOOGLE CLOUD STORAGE
+  // SUBIR ARCHIVO(S) DIRECTAMENTE A GOOGLE CLOUD STORAGE
   const handleFileUpload = async (e, registroId) => {
     const file = e.target.files[0];
     if (!file) return;
 
     if (!registroId) {
       alert("⚠️ Primero debes guardar el registro antes de adjuntar evidencia física.");
+      e.target.value = '';
       return;
     }
 
@@ -268,6 +267,7 @@ function DashboardApp({ user, onLogout }) {
     formDataUpload.append('archivo', file);
     formDataUpload.append('registro_id', registroId);
 
+    setSubiendoArchivo(true);
     try {
       const res = await fetch(`${API_URL}/api/evidencias`, {
         method: 'POST',
@@ -275,14 +275,43 @@ function DashboardApp({ user, onLogout }) {
       });
       const data = await res.json();
       if (res.ok) {
-        setNombreArchivoGuardado(file.name);
-        alert("✅ Archivo subido exitosamente a Google Cloud Storage.");
+        if (data.evidencia) {
+          setEvidenciasGuardadas(prev => [...prev, data.evidencia]);
+        } else {
+          const regRes = await fetch(`${API_URL}/api/registros/${registroId}`);
+          if (regRes.ok) {
+            const regData = await regRes.json();
+            setEvidenciasGuardadas(regData.evidencias || []);
+          }
+        }
         fetchData();
       } else {
         alert(`⚠️ Error al subir archivo: ${data.error}`);
       }
     } catch (err) {
       alert("⚠️ Error de conexión al subir la evidencia.");
+    } finally {
+      setSubiendoArchivo(false);
+      e.target.value = '';
+    }
+  };
+
+  // ELIMINAR EVIDENCIA INDIVIDUAL ANTES DE FINALIZAR
+  const handleDeleteEvidencia = async (evidenciaId) => {
+    if (!window.confirm("¿Seguro que deseas eliminar este archivo adjunto?")) return;
+    try {
+      const res = await fetch(`${API_URL}/api/evidencias/${evidenciaId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setEvidenciasGuardadas(prev => prev.filter(ev => ev.id !== evidenciaId));
+        fetchData();
+      } else {
+        const data = await res.json();
+        alert(`⚠️ Error al eliminar: ${data.error || 'No se pudo borrar el archivo'}`);
+      }
+    } catch (err) {
+      alert("⚠️ Error de conexión al eliminar la evidencia.");
     }
   };
 
@@ -310,9 +339,7 @@ function DashboardApp({ user, onLogout }) {
       horas_generadas_minutos: minutosNuevos,
       usuario_id: user.id,
       intervinientes,
-      estado: nuevoEstado,
-      tiene_evidencia: nombreArchivoGuardado ? 1 : 0,
-      nombre_archivo_evidencia: nombreArchivoGuardado
+      estado: nuevoEstado
     };
 
     if (editingId) {
@@ -321,7 +348,7 @@ function DashboardApp({ user, onLogout }) {
         await fetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     }
 
-    setShowModal(false); setEditingId(null); setIntervinientes([]); setNombreArchivoGuardado(null);
+    setShowModal(false); setEditingId(null); setIntervinientes([]); setEvidenciasGuardadas([]);
     fetchData();
   };
 
@@ -624,7 +651,7 @@ function DashboardApp({ user, onLogout }) {
                     <tr key={r.id} className="border-b hover:bg-gray-50">
                       <td className="p-3 whitespace-nowrap"><div className="font-medium text-gray-800">{r.fecha}</div><div className="text-[11px] text-gray-500">{r.hora_inicio && r.hora_termino ? `⏰ ${r.hora_inicio} a ${r.hora_termino}` : 'Sin horario'}</div></td>
                       {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
-                      <td className="p-3 truncate max-w-xs">{r.actividad} {(Number(r.tiene_evidencia) > 0 || r.nombre_archivo_evidencia) && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee archivo de evidencia" />}</td>
+                      <td className="p-3 truncate max-w-xs">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee archivo de evidencia" />}</td>
                       <td className="p-3 font-bold text-gray-700 whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs ({r.horas_generadas_minutos || 0} min)</td>
                       <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
                       <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
@@ -703,7 +730,7 @@ function DashboardApp({ user, onLogout }) {
                           <tr key={r.id} className="border-b hover:bg-gray-50">
                               <td className="p-3 whitespace-nowrap">{r.fecha}</td>
                               {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
-                              <td className="p-3">{r.actividad}</td>
+                              <td className="p-3">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee archivo de evidencia" />}</td>
                               <td className="p-3 font-bold whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs</td>
                               <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
                               <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
@@ -711,8 +738,12 @@ function DashboardApp({ user, onLogout }) {
 
                                   {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
                                     <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1">
-                                      <Check size={14} /> Finalizar
+                                      <Check size={14} /> Finalizar / Evidencia
                                     </button>
+                                  )}
+
+                                  {(!isAdmin && r.estado === 'Pendiente') && (
+                                    <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
                                   )}
 
                                   {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
@@ -940,7 +971,7 @@ function DashboardApp({ user, onLogout }) {
               )}
             </div>
 
-            <button onClick={() => { setEditingId(null); setFormData({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento }); setNombreArchivoGuardado(null); setShowModal(true); }} className="bg-yellow-400 hover:bg-yellow-500 text-teal-900 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition">+ NUEVA PROPUESTA</button>
+            <button onClick={() => { setEditingId(null); setFormData({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento }); setEvidenciasGuardadas([]); setShowModal(true); }} className="bg-yellow-400 hover:bg-yellow-500 text-teal-900 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition">+ NUEVA PROPUESTA</button>
           </div>
         </header>
         <div className="p-6">{renderContent()}</div>
@@ -975,20 +1006,60 @@ function DashboardApp({ user, onLogout }) {
                 <textarea rows="4" required value={formData.actividad} onChange={e => setFormData({...formData, actividad: e.target.value})} className="w-full border rounded-lg p-2 bg-gray-50" placeholder="Describa el informe de la auditoría..."></textarea>
               </div>
 
-              {/* SECCIÓN DE SUBIDA DE EVIDENCIA FÍSICA A GOOGLE CLOUD STORAGE */}
-              <div className="p-3 border border-dashed border-gray-300 rounded-xl bg-gray-50 space-y-2 text-left">
-                <label className="block text-xs font-bold text-teal-800 flex items-center gap-1.5">
-                  <Upload size={14} /> Adjuntar Evidencia (Google Cloud Storage)
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) => handleFileUpload(e, editingId)}
-                  className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                />
-                {nombreArchivoGuardado ? (
-                  <p className="text-[11px] text-emerald-600 font-bold mt-1">📎 Archivo vinculado: {nombreArchivoGuardado}</p>
+              {/* SECCIÓN DE SUBIDA Y GESTIÓN DE EVIDENCIAS EN GOOGLE CLOUD STORAGE */}
+              <div className="p-3.5 border border-dashed border-gray-300 rounded-xl bg-gray-50 space-y-2.5 text-left">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-teal-800 flex items-center gap-1.5">
+                    <Upload size={14} /> Adjuntar Evidencias (Google Cloud Storage)
+                  </label>
+                  {subiendoArchivo && <span className="text-[11px] font-bold text-blue-600 animate-pulse">Subiendo archivo...</span>}
+                </div>
+
+                {editingId ? (
+                  <>
+                    <input
+                      type="file"
+                      disabled={subiendoArchivo}
+                      onChange={(e) => handleFileUpload(e, editingId)}
+                      className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50"
+                    />
+
+                    {evidenciasGuardadas.length > 0 ? (
+                      <div className="space-y-1.5 pt-1">
+                        <p className="text-[11px] font-bold text-emerald-700">📎 Archivos vinculados ({evidenciasGuardadas.length}):</p>
+                        {evidenciasGuardadas.map((ev) => (
+                          <div key={ev.id} className="bg-white p-2 rounded-lg border border-gray-200 flex items-center justify-between shadow-sm">
+                            <span className="text-[11px] font-medium text-gray-800 truncate max-w-[230px]" title={ev.nombre_archivo}>
+                              {ev.nombre_archivo}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={ev.archivo_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline flex items-center gap-1 font-bold text-[11px]"
+                                title="Ver archivo"
+                              >
+                                Ver <ExternalLink size={12} />
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteEvidencia(ev.id)}
+                                className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition"
+                                title="Eliminar archivo"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-gray-500 italic">Aún no hay archivos adjuntos. Puedes subir uno o más archivos antes de finalizar.</p>
+                    )}
+                  </>
                 ) : (
-                  <p className="text-[10px] text-gray-500 italic">💡 Nota: Si vas a crear un registro nuevo, guárdalo primero para poder adjuntar y subir el archivo a la nube.</p>
+                  <p className="text-[10px] text-gray-500 italic">💡 Nota: Guarda esta nueva propuesta primero para poder adjuntar y gestionar archivos de evidencia en la nube.</p>
                 )}
               </div>
 
@@ -1068,7 +1139,7 @@ function DashboardApp({ user, onLogout }) {
                   <Paperclip size={14} className="text-teal-700" /> Evidencia en la Nube (GCS):
                 </span>
                 <span className={`text-[10px] font-bold ${registroDetalle.evidencias && registroDetalle.evidencias.length > 0 ? 'text-emerald-700' : 'text-gray-400'}`}>
-                  {registroDetalle.evidencias && registroDetalle.evidencias.length > 0 ? 'Archivo adjunto' : 'Sin adjuntos'}
+                  {registroDetalle.evidencias && registroDetalle.evidencias.length > 0 ? `${registroDetalle.evidencias.length} archivo(s)` : 'Sin adjuntos'}
                 </span>
               </div>
 
