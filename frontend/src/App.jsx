@@ -122,11 +122,17 @@ function DashboardApp({ user, onLogout }) {
     }
   });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(notifStorageKey, JSON.stringify(notificacionesLeidas));
-    } catch (e) {}
-  }, [notificacionesLeidas, notifStorageKey]);
+  // Función única para marcar como leída y persistir inmediatamente
+  const marcarNotificacionLeida = (idNotif) => {
+    setNotificacionesLeidas(prev => {
+      if (prev.includes(idNotif)) return prev;
+      const actualizado = [...prev, idNotif];
+      try {
+        localStorage.setItem(notifStorageKey, JSON.stringify(actualizado));
+      } catch (e) {}
+      return actualizado;
+    });
+  };
 
   const [evidenciasGuardadas, setEvidenciasGuardadas] = useState([]);
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
@@ -140,7 +146,7 @@ function DashboardApp({ user, onLogout }) {
 
   const queryParams = `?userId=${user.id}&rol=${user.rol}`;
 
-  const fetchData = async () => {
+  const fetchData = async (isBackground = false) => {
     try {
       if (isAdmin) {
         const resUsers = await fetch(`${API_URL}/api/usuarios`);
@@ -167,7 +173,7 @@ function DashboardApp({ user, onLogout }) {
   useEffect(() => {
     fetchData();
     const timer = setInterval(() => {
-      fetchData();
+      fetchData(true);
     }, 10000);
     return () => clearInterval(timer);
   }, []);
@@ -539,9 +545,9 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
-  // Notificaciones unificadas: Registros (aprobados/rechazados) + Compensaciones registradas para el auditor
+  // Notificaciones unificadas filtrando estrictamente contra el arreglo de leídas
   const registrosNotif = isAdmin
-    ? rawRegistros.filter(r => r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas')
+    ? rawRegistros.filter(r => (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && !notificacionesLeidas.includes(r.id))
     : rawRegistros.filter(r => String(r.usuario_id) === String(user.id) && (r.estado.includes('Aprobado') || r.estado.includes('Autorizado') || r.estado === 'Rechazado') && !notificacionesLeidas.includes(r.id));
 
   const compensacionesNotif = !isAdmin
@@ -957,7 +963,7 @@ function DashboardApp({ user, onLogout }) {
                             <div
                               key={r.id}
                               onClick={() => {
-                                setNotificacionesLeidas(prev => prev.includes(r.id) ? prev : [...prev, r.id]);
+                                marcarNotificacionLeida(r.id);
                                 verDetallesRegistro(r.id);
                                 setShowNotificationsDropdown(false);
                               }}
@@ -981,7 +987,7 @@ function DashboardApp({ user, onLogout }) {
                               <div
                                 key={compKey}
                                 onClick={() => {
-                                  setNotificacionesLeidas(prev => prev.includes(compKey) ? prev : [...prev, compKey]);
+                                  marcarNotificacionLeida(compKey);
                                   setActiveTab('compensaciones');
                                   setShowNotificationsDropdown(false);
                                 }}
