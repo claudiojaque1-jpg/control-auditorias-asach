@@ -243,11 +243,11 @@ app.post('/api/evidencias', async (req, res) => {
             const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
             
             try {
-                await pool.query(
-                    'INSERT INTO evidencias (registro_id, archivo_url, nombre_archivo) VALUES ($1, $2, $3)', 
+                const evInsert = await pool.query(
+                    'INSERT INTO evidencias (registro_id, archivo_url, nombre_archivo) VALUES ($1, $2, $3) RETURNING *', 
                     [registro_id, publicUrl, archivo.name]
                 );
-                return res.json({ success: true, url: publicUrl });
+                return res.json({ success: true, url: publicUrl, evidencia: evInsert.rows[0] });
             } catch (dbErr) {
                 console.error('Error al guardar en base de datos:', dbErr);
                 return res.status(500).json({ error: 'Archivo subido a la nube, pero falló al registrar en la base de datos.' });
@@ -257,6 +257,27 @@ app.post('/api/evidencias', async (req, res) => {
         blobStream.end(archivo.data);
     } catch (err) {
         console.error('Error interno:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Eliminar una evidencia específica (de GCS y de PostgreSQL)
+app.delete('/api/evidencias/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const evRes = await pool.query(`SELECT * FROM evidencias WHERE id = $1`, [id]);
+        const evidencia = evRes.rows[0];
+        if (!evidencia) return res.status(404).json({ error: 'Evidencia no encontrada' });
+
+        const prefix = `https://storage.googleapis.com/${bucket.name}/`;
+        if (evidencia.archivo_url && evidencia.archivo_url.startsWith(prefix)) {
+            const filePath = decodeURIComponent(evidencia.archivo_url.replace(prefix, ''));
+            await bucket.file(filePath).delete().catch(err => console.warn('Aviso al borrar en GCS:', err.message));
+        }
+
+        await pool.query(`DELETE FROM evidencias WHERE id = $1`, [id]);
+        res.json({ success: true });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
@@ -296,7 +317,7 @@ app.get('/api/registros/:id', async (req, res) => {
         const registro = regRes.rows[0];
         if (!registro) return res.status(404).json({ error: 'Registro no encontrado' });
 
-        const evRes = await pool.query(`SELECT * FROM evidencias WHERE registro_id = $1`, [id]);
+        const evRes = await pool.query(`SELECT * FROM evidencias WHERE registro_id = $1 ORDER BY id ASC`, [id]);
         const intRes = await pool.query(`SELECT * FROM intervinientes WHERE registro_id = $1`, [id]);
 
         res.json({ 
