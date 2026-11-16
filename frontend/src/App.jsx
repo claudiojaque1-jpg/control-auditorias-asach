@@ -125,17 +125,20 @@ function DashboardApp({ user, onLogout }) {
     return [];
   });
 
+  // Efecto de sincronización garantizada con localStorage ante cualquier cambio de estado
+  useEffect(() => {
+    try {
+      localStorage.setItem(notifStorageKey, JSON.stringify(notificacionesLeidas));
+    } catch (e) {}
+  }, [notificacionesLeidas, notifStorageKey]);
+
   // Función infalible para registrar la lectura normalizando a string
   const marcarNotificacionLeida = (idNotif) => {
     const idStr = String(idNotif);
     setNotificacionesLeidas(prev => {
       const prevStr = prev.map(String);
       if (prevStr.includes(idStr)) return prevStr;
-      const actualizado = [...prevStr, idStr];
-      try {
-        localStorage.setItem(`notificaciones_leidas_user_${user.id}`, JSON.stringify(actualizado));
-      } catch (e) {}
-      return actualizado;
+      return [...prevStr, idStr];
     });
   };
 
