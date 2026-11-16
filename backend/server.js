@@ -16,11 +16,18 @@ const SECRET_KEY = process.env.SECRET_KEY || "FirmaSecretaBancoHoras2026";
 // ---------------------------------------------------------
 // CONFIGURACIÓN DE GOOGLE CLOUD STORAGE
 // ---------------------------------------------------------
-const storage = new Storage({
-  keyFilename: './gcp-key', // Asegúrate de que coincida con el nombre de tu archivo JSON en la carpeta backend
-});
+let storage;
+if (process.env.GOOGLE_CREDENTIALS_JSON) {
+    storage = new Storage({
+        credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON),
+    });
+} else {
+    storage = new Storage({
+        keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS || './gcp-key.json',
+    });
+}
 
-const bucketName = process.env.GCP_BUCKET_NAME || 'auditorias-asach-evidencias'; // Reemplaza o define tu variable de entorno
+const bucketName = process.env.GCS_BUCKET_NAME || process.env.GCP_BUCKET_NAME || 'auditorias-asach-evidencias';
 const bucket = storage.bucket(bucketName);
 
 // Login
