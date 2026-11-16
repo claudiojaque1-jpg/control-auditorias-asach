@@ -111,35 +111,23 @@ function DashboardApp({ user, onLogout }) {
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
-  // Clave de almacenamiento única y robusta por usuario
-  const notifStorageKey = `notificaciones_leidas_user_${user.id}`;
+  // Estado sincronizado directamente con PostgreSQL en Railway
+  const [notificacionesLeidas, setNotificacionesLeidas] = useState([]);
 
-  const [notificacionesLeidas, setNotificacionesLeidas] = useState(() => {
-    try {
-      const saved = localStorage.getItem(`notificaciones_leidas_user_${user.id}`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return Array.isArray(parsed) ? parsed.map(String) : [];
-      }
-    } catch (e) {}
-    return [];
-  });
-
-  // Efecto de sincronización garantizada con localStorage ante cualquier cambio de estado
-  useEffect(() => {
-    try {
-      localStorage.setItem(notifStorageKey, JSON.stringify(notificacionesLeidas));
-    } catch (e) {}
-  }, [notificacionesLeidas, notifStorageKey]);
-
-  // Función infalible para registrar la lectura normalizando a string
-  const marcarNotificacionLeida = (idNotif) => {
+  const marcarNotificacionLeida = async (idNotif) => {
     const idStr = String(idNotif);
-    setNotificacionesLeidas(prev => {
-      const prevStr = prev.map(String);
-      if (prevStr.includes(idStr)) return prevStr;
-      return [...prevStr, idStr];
-    });
+    // Actualización inmediata en pantalla
+    setNotificacionesLeidas(prev => (prev.includes(idStr) ? prev : [...prev, idStr]));
+    // Persistencia permanente en base de datos
+    try {
+      await fetch(`${API_URL}/api/notificaciones-leidas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario_id: user.id, notificacion_key: idStr })
+      });
+    } catch (err) {
+      console.error("Error guardando notificación leída:", err);
+    }
   };
 
   const [evidenciasGuardadas, setEvidenciasGuardadas] = useState([]);
@@ -156,6 +144,13 @@ function DashboardApp({ user, onLogout }) {
 
   const fetchData = async () => {
     try {
+      // Cargar notificaciones ya leídas desde PostgreSQL
+      const resNotif = await fetch(`${API_URL}/api/notificaciones-leidas/${user.id}`);
+      if (resNotif.ok) {
+        const leidasDB = await resNotif.json();
+        setNotificacionesLeidas(leidasDB.map(String));
+      }
+
       if (isAdmin) {
         const resUsers = await fetch(`${API_URL}/api/usuarios`);
         if(resUsers.ok) setUsuariosDB(await resUsers.json());
@@ -553,7 +548,6 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
-  // Notificaciones unificadas filtradas con normalización estricta en string contra las leídas
   const leidasSet = new Set(notificacionesLeidas.map(String));
 
   const registrosNotif = isAdmin
