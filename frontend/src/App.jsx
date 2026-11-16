@@ -110,7 +110,24 @@ function DashboardApp({ user, onLogout }) {
 
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
-  const [notificacionesLeidas, setNotificacionesLeidas] = useState([]);
+
+  // Persistencia robusta de notificaciones leídas usando localStorage ligado al ID del usuario
+  const notifStorageKey = `notificaciones_leidas_user_${user.id}`;
+  const [notificacionesLeidas, setNotificacionesLeidas] = useState(() => {
+    try {
+      const saved = localStorage.getItem(notifStorageKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(notifStorageKey, JSON.stringify(notificacionesLeidas));
+    } catch (e) {}
+  }, [notificacionesLeidas, notifStorageKey]);
+
   const [evidenciasGuardadas, setEvidenciasGuardadas] = useState([]);
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
 
@@ -940,7 +957,7 @@ function DashboardApp({ user, onLogout }) {
                             <div
                               key={r.id}
                               onClick={() => {
-                                setNotificacionesLeidas(prev => [...prev, r.id]);
+                                setNotificacionesLeidas(prev => prev.includes(r.id) ? prev : [...prev, r.id]);
                                 verDetallesRegistro(r.id);
                                 setShowNotificationsDropdown(false);
                               }}
@@ -958,27 +975,30 @@ function DashboardApp({ user, onLogout }) {
                             </div>
                           ))}
 
-                          {compensacionesNotif.map(c => (
-                            <div
-                              key={`comp-${c.id}`}
-                              onClick={() => {
-                                setNotificacionesLeidas(prev => [...prev, `comp-${c.id}`]);
-                                setActiveTab('compensaciones');
-                                setShowNotificationsDropdown(false);
-                              }}
-                              className="p-3 bg-white hover:bg-blue-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
-                            >
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
-                                  Nueva Compensación Registrada
-                                </span>
-                                <span className="text-[10px] text-gray-400">{c.fecha}</span>
+                          {compensacionesNotif.map(c => {
+                            const compKey = `comp-${c.id}`;
+                            return (
+                              <div
+                                key={compKey}
+                                onClick={() => {
+                                  setNotificacionesLeidas(prev => prev.includes(compKey) ? prev : [...prev, compKey]);
+                                  setActiveTab('compensaciones');
+                                  setShowNotificationsDropdown(false);
+                                }}
+                                className="p-3 bg-white hover:bg-blue-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
+                              >
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                                    Nueva Compensación Registrada
+                                  </span>
+                                  <span className="text-[10px] text-gray-400">{c.fecha}</span>
+                                </div>
+                                <p className="font-bold text-gray-800 text-xs truncate">Motivo: {c.motivo}</p>
+                                <p className="text-[11px] text-red-600 font-bold mt-0.5">⏰ Descuento: -{formatTime(c.horas_compensadas_minutos)} hrs</p>
+                                <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-blue-600 transition" />
                               </div>
-                              <p className="font-bold text-gray-800 text-xs truncate">Motivo: {c.motivo}</p>
-                              <p className="text-[11px] text-red-600 font-bold mt-0.5">⏰ Descuento: -{formatTime(c.horas_compensadas_minutos)} hrs</p>
-                              <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-blue-600 transition" />
-                            </div>
-                          ))}
+                            );
+                          })}
                         </>
                       )
                     )}
