@@ -110,6 +110,7 @@ function DashboardApp({ user, onLogout }) {
 
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
+  const [notificacionesLeidas, setNotificacionesLeidas] = useState([]);
   const [evidenciasGuardadas, setEvidenciasGuardadas] = useState([]);
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
 
@@ -523,7 +524,7 @@ function DashboardApp({ user, onLogout }) {
 
   const solicitudesPendientes = isAdmin
     ? rawRegistros.filter(r => r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas')
-    : rawRegistros.filter(r => String(r.usuario_id) === String(user.id) && (r.estado.includes('Aprobado') || r.estado.includes('Autorizado') || r.estado === 'Rechazado'));
+    : rawRegistros.filter(r => String(r.usuario_id) === String(user.id) && (r.estado.includes('Aprobado') || r.estado.includes('Autorizado') || r.estado === 'Rechazado') && !notificacionesLeidas.includes(r.id));
 
   const indiceUltimoRegistro = paginaActual * registrosPorPagina;
   const indicePrimerRegistro = indiceUltimoRegistro - registrosPorPagina;
@@ -930,7 +931,11 @@ function DashboardApp({ user, onLogout }) {
                         solicitudesPendientes.map(r => (
                           <div
                             key={r.id}
-                            onClick={() => { verDetallesRegistro(r.id); setShowNotificationsDropdown(false); }}
+                            onClick={() => {
+                              setNotificacionesLeidas(prev => [...prev, r.id]);
+                              verDetallesRegistro(r.id);
+                              setShowNotificationsDropdown(false);
+                            }}
                             className="p-3 bg-white hover:bg-blue-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
                           >
                             <div className="flex justify-between items-center mb-1">
