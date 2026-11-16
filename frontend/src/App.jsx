@@ -111,24 +111,29 @@ function DashboardApp({ user, onLogout }) {
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
-  // Persistencia robusta de notificaciones leídas usando localStorage ligado al ID del usuario
+  // Clave de almacenamiento única y robusta por usuario
   const notifStorageKey = `notificaciones_leidas_user_${user.id}`;
+
   const [notificacionesLeidas, setNotificacionesLeidas] = useState(() => {
     try {
-      const saved = localStorage.getItem(notifStorageKey);
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
+      const saved = localStorage.getItem(`notificaciones_leidas_user_${user.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.map(String) : [];
+      }
+    } catch (e) {}
+    return [];
   });
 
-  // Función única para marcar como leída y persistir inmediatamente
+  // Función infalible para registrar la lectura normalizando a string
   const marcarNotificacionLeida = (idNotif) => {
+    const idStr = String(idNotif);
     setNotificacionesLeidas(prev => {
-      if (prev.includes(idNotif)) return prev;
-      const actualizado = [...prev, idNotif];
+      const prevStr = prev.map(String);
+      if (prevStr.includes(idStr)) return prevStr;
+      const actualizado = [...prevStr, idStr];
       try {
-        localStorage.setItem(notifStorageKey, JSON.stringify(actualizado));
+        localStorage.setItem(`notificaciones_leidas_user_${user.id}`, JSON.stringify(actualizado));
       } catch (e) {}
       return actualizado;
     });
@@ -146,7 +151,7 @@ function DashboardApp({ user, onLogout }) {
 
   const queryParams = `?userId=${user.id}&rol=${user.rol}`;
 
-  const fetchData = async (isBackground = false) => {
+  const fetchData = async () => {
     try {
       if (isAdmin) {
         const resUsers = await fetch(`${API_URL}/api/usuarios`);
@@ -173,7 +178,7 @@ function DashboardApp({ user, onLogout }) {
   useEffect(() => {
     fetchData();
     const timer = setInterval(() => {
-      fetchData(true);
+      fetchData();
     }, 10000);
     return () => clearInterval(timer);
   }, []);
@@ -545,13 +550,15 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
-  // Notificaciones unificadas filtrando estrictamente contra el arreglo de leídas
+  // Notificaciones unificadas filtradas con normalización estricta en string contra las leídas
+  const leidasSet = new Set(notificacionesLeidas.map(String));
+
   const registrosNotif = isAdmin
-    ? rawRegistros.filter(r => (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && !notificacionesLeidas.includes(r.id))
-    : rawRegistros.filter(r => String(r.usuario_id) === String(user.id) && (r.estado.includes('Aprobado') || r.estado.includes('Autorizado') || r.estado === 'Rechazado') && !notificacionesLeidas.includes(r.id));
+    ? rawRegistros.filter(r => (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && !leidasSet.has(String(r.id)))
+    : rawRegistros.filter(r => String(r.usuario_id) === String(user.id) && (r.estado.includes('Aprobado') || r.estado.includes('Autorizado') || r.estado === 'Rechazado') && !leidasSet.has(String(r.id)));
 
   const compensacionesNotif = !isAdmin
-    ? rawCompensaciones.filter(c => String(c.usuario_id) === String(user.id) && !notificacionesLeidas.includes(`comp-${c.id}`))
+    ? rawCompensaciones.filter(c => String(c.usuario_id) === String(user.id) && !leidasSet.has(String(`comp-${c.id}`)))
     : [];
 
   const totalNotificacionesCount = registrosNotif.length + compensacionesNotif.length;
