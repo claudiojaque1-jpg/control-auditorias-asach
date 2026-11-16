@@ -522,9 +522,16 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
-  const solicitudesPendientes = isAdmin
+  // Notificaciones unificadas: Registros (aprobados/rechazados) + Compensaciones registradas para el auditor
+  const registrosNotif = isAdmin
     ? rawRegistros.filter(r => r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas')
     : rawRegistros.filter(r => String(r.usuario_id) === String(user.id) && (r.estado.includes('Aprobado') || r.estado.includes('Autorizado') || r.estado === 'Rechazado') && !notificacionesLeidas.includes(r.id));
+
+  const compensacionesNotif = !isAdmin
+    ? rawCompensaciones.filter(c => String(c.usuario_id) === String(user.id) && !notificacionesLeidas.includes(`comp-${c.id}`))
+    : [];
+
+  const totalNotificacionesCount = registrosNotif.length + compensacionesNotif.length;
 
   const indiceUltimoRegistro = paginaActual * registrosPorPagina;
   const indicePrimerRegistro = indiceUltimoRegistro - registrosPorPagina;
@@ -883,9 +890,9 @@ function DashboardApp({ user, onLogout }) {
             <div className="relative">
               <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className="relative p-2 text-gray-600 bg-amber-50 hover:bg-amber-100 rounded-full transition shadow-sm">
                 <Bell size={20} className="text-amber-600" />
-                {solicitudesPendientes.length > 0 && (
+                {totalNotificacionesCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-amber-500 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center font-bold shadow animate-pulse">
-                    {solicitudesPendientes.length}
+                    {totalNotificacionesCount}
                   </span>
                 )}
               </button>
@@ -897,19 +904,19 @@ function DashboardApp({ user, onLogout }) {
                       <Bell size={16} />
                       <span className="font-bold text-xs">{isAdmin ? 'Solicitudes Pendientes' : 'Mis Notificaciones de Propuestas'}</span>
                     </div>
-                    {solicitudesPendientes.length > 0 && (
+                    {totalNotificacionesCount > 0 && (
                       <span className="bg-amber-400 text-teal-900 font-bold text-[10px] px-2 py-0.5 rounded-full">
-                        {solicitudesPendientes.length} nuevas
+                        {totalNotificacionesCount} nuevas
                       </span>
                     )}
                   </div>
 
                   <div className="max-h-80 overflow-y-auto p-3 space-y-2.5 bg-gray-50">
-                    {solicitudesPendientes.length === 0 ? (
+                    {totalNotificacionesCount === 0 ? (
                       <p className="text-gray-400 text-center py-6 text-xs font-medium">No hay notificaciones pendientes.</p>
                     ) : (
                       isAdmin ? (
-                        solicitudesPendientes.map(r => (
+                        registrosNotif.map(r => (
                           <div
                             key={r.id}
                             onClick={() => { verDetallesRegistro(r.id); setShowNotificationsDropdown(false); }}
@@ -928,27 +935,51 @@ function DashboardApp({ user, onLogout }) {
                           </div>
                         ))
                       ) : (
-                        solicitudesPendientes.map(r => (
-                          <div
-                            key={r.id}
-                            onClick={() => {
-                              setNotificacionesLeidas(prev => [...prev, r.id]);
-                              verDetallesRegistro(r.id);
-                              setShowNotificationsDropdown(false);
-                            }}
-                            className="p-3 bg-white hover:bg-blue-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
-                          >
-                            <div className="flex justify-between items-center mb-1">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${r.estado === 'Rechazado' ? 'text-red-700 bg-red-50' : 'text-blue-700 bg-blue-50'}`}>
-                                {r.estado === 'Rechazado' ? 'Propuesta Rechazada' : 'Propuesta Aprobada'}
-                              </span>
-                              <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                        <>
+                          {registrosNotif.map(r => (
+                            <div
+                              key={r.id}
+                              onClick={() => {
+                                setNotificacionesLeidas(prev => [...prev, r.id]);
+                                verDetallesRegistro(r.id);
+                                setShowNotificationsDropdown(false);
+                              }}
+                              className="p-3 bg-white hover:bg-blue-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
+                            >
+                              <div className="flex justify-between items-center mb-1">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${r.estado === 'Rechazado' ? 'text-red-700 bg-red-50' : 'text-blue-700 bg-blue-50'}`}>
+                                  {r.estado === 'Rechazado' ? 'Propuesta Rechazada' : 'Propuesta Aprobada'}
+                                </span>
+                                <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                              </div>
+                              <p className="font-bold text-gray-800 text-xs truncate">Actividad: {r.actividad}</p>
+                              <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
+                              <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-blue-600 transition" />
                             </div>
-                            <p className="font-bold text-gray-800 text-xs truncate">Actividad: {r.actividad}</p>
-                            <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
-                            <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-blue-600 transition" />
-                          </div>
-                        ))
+                          ))}
+
+                          {compensacionesNotif.map(c => (
+                            <div
+                              key={`comp-${c.id}`}
+                              onClick={() => {
+                                setNotificacionesLeidas(prev => [...prev, `comp-${c.id}`]);
+                                setActiveTab('compensaciones');
+                                setShowNotificationsDropdown(false);
+                              }}
+                              className="p-3 bg-white hover:bg-blue-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
+                            >
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                                  Nueva Compensación Registrada
+                                </span>
+                                <span className="text-[10px] text-gray-400">{c.fecha}</span>
+                              </div>
+                              <p className="font-bold text-gray-800 text-xs truncate">Motivo: {c.motivo}</p>
+                              <p className="text-[11px] text-red-600 font-bold mt-0.5">⏰ Descuento: -{formatTime(c.horas_compensadas_minutos)} hrs</p>
+                              <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-blue-600 transition" />
+                            </div>
+                          ))}
+                        </>
                       )
                     )}
                   </div>
