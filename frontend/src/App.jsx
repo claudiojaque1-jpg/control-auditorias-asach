@@ -400,7 +400,7 @@ function DashboardApp({ user, onLogout }) {
 
   const handleCompSubmit = async (e) => {
     e.preventDefault();
-    if(!compData.usuario_id) return alert("Por favor, seleccione el auditor.");
+    if (!compData.usuario_id) return alert("Por favor, seleccione el auditor.");
 
     let totalMinutos = 0;
     if (compData.horas.includes(':')) {
@@ -410,17 +410,50 @@ function DashboardApp({ user, onLogout }) {
       totalMinutos = Number(compData.horas) * 60;
     }
 
-    if (isNaN(totalMinutos) || totalMinutos <= 0) return alert("Por favor, ingrese un tiempo válido en formato HH:MM o minutos.");
+    if (isNaN(totalMinutos) || totalMinutos <= 0) {
+      return alert("Por favor, ingrese un tiempo válido en formato HH:MM o minutos.");
+    }
 
     const saldoRealMinutos = obtenerSaldoAuditorSeleccionado(compData.usuario_id);
 
-    if (totalMinutos > saldoRealMinutos) return alert(`⚠️ Las horas a descontar superan el saldo pendiente de este auditor (${formatTime(saldoRealMinutos)} hrs disponibles).`);
+    if (totalMinutos > saldoRealMinutos) {
+      return alert(`⚠️ Las horas a descontar superan el saldo pendiente de este auditor (${formatTime(saldoRealMinutos)} hrs disponibles).`);
+    }
 
     const res = await fetch(`${API_URL}/api/compensaciones`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...compData, horas_compensadas_minutos: totalMinutos })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...compData, horas_compensadas_minutos: totalMinutos })
     });
 
-    setShowModalComp(false); setCompData({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' }); fetchData();
+    if (res.ok) {
+      // Buscar los datos del auditor seleccionado para armar el borrador en Outlook
+      const auditorSeleccionado = usuariosDB.find(u => String(u.id) === String(compData.usuario_id));
+      const nuevoSaldoMinutos = saldoRealMinutos - totalMinutos;
+
+      if (auditorSeleccionado && auditorSeleccionado.email) {
+        const asunto = encodeURIComponent(`Registro de Compensación de Horas - ${auditorSeleccionado.nombre}`);
+        const cuerpo = encodeURIComponent(
+          `Estimado/a ${auditorSeleccionado.nombre},\n\n` +
+          `Se ha registrado una compensación (descuento) de horas en el Sistema de Control de Auditorías ASACh con el siguiente detalle:\n\n` +
+          `• Fecha: ${compData.fecha}\n` +
+          `• Tiempo descontado: ${formatTime(totalMinutos)} hrs (${totalMinutos} minutos)\n` +
+          `• Motivo: ${compData.motivo}\n` +
+          `• Saldo anterior: ${formatTime(saldoRealMinutos)} hrs\n` +
+          `• Nuevo saldo a favor: ${formatTime(nuevoSaldoMinutos)} hrs\n\n` +
+          `Saludos cordiales,\n` +
+          `${user.nombre}\n` +
+          `Administración - Control de Auditorías ASACh`
+        );
+
+        // Abrir Outlook de escritorio con el correo prellenado
+        window.location.href = `mailto:${auditorSeleccionado.email}?subject=${asunto}&body=${cuerpo}`;
+      }
+    }
+
+    setShowModalComp(false);
+    setCompData({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' });
+    fetchData();
   };
 
   const abrirCreacionUsuario = () => {
