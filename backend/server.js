@@ -14,6 +14,19 @@ app.use(fileUpload()); // Habilita la recepción de archivos en req.files
 const SECRET_KEY = process.env.SECRET_KEY || "FirmaSecretaBancoHoras2026";
 
 // ---------------------------------------------------------
+// CREACIÓN AUTOMÁTICA DE TABLA DE NOTIFICACIONES LEÍDAS
+// ---------------------------------------------------------
+pool.query(`
+    CREATE TABLE IF NOT EXISTS notificaciones_leidas (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL,
+        notificacion_key VARCHAR(100) NOT NULL,
+        fecha_lectura TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(usuario_id, notificacion_key)
+    )
+`).catch(err => console.error('Error verificando tabla notificaciones_leidas:', err.message));
+
+// ---------------------------------------------------------
 // CONFIGURACIÓN DE GOOGLE CLOUD STORAGE
 // ---------------------------------------------------------
 let storage;
@@ -239,7 +252,6 @@ app.post('/api/evidencias', async (req, res) => {
         });
 
         blobStream.on('finish', async () => {
-            // URL pública permanente del archivo en Google Cloud Storage
             const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
             
             try {
@@ -356,6 +368,35 @@ app.get('/api/compensaciones', async (req, res) => {
         const query = `SELECT c.*, COALESCE(u.nombre, 'Claudio Jaque') as auditor FROM compensaciones c LEFT JOIN usuarios u ON c.usuario_id = u.id ${filter} ORDER BY c.id DESC`;
         const result = await pool.query(query, params);
         res.json(result.rows || []);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------
+// RUTAS DE NOTIFICACIONES LEÍDAS PERSISTENTES EN BASE DE DATOS
+// ---------------------------------------------------------
+app.get('/api/notificaciones-leidas/:usuarioId', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT notificacion_key FROM notificaciones_leidas WHERE usuario_id = $1`,
+            [req.params.usuarioId]
+        );
+        res.json(result.rows.map(r => r.notificacion_key));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/notificaciones-leidas', async (req, res) => {
+    const { usuario_id, notificacion_key } = req.body;
+    try {
+        await pool.query(
+            `INSERT INTO notificaciones_leidas (usuario_id, notificacion_key) 
+             VALUES ($1, $2) ON CONFLICT (usuario_id, notificacion_key) DO NOTHING`,
+            [usuario_id, String(notificacion_key)]
+        );
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
