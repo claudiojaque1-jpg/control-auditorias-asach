@@ -252,7 +252,6 @@ function DashboardApp({ user, onLogout }) {
     return min2 - min1;
   };
 
-  // SUBIR ARCHIVO(S) DIRECTAMENTE A GOOGLE CLOUD STORAGE
   const handleFileUpload = async (e, registroId) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -296,7 +295,6 @@ function DashboardApp({ user, onLogout }) {
     }
   };
 
-  // ELIMINAR EVIDENCIA INDIVIDUAL ANTES DE FINALIZAR
   const handleDeleteEvidencia = async (evidenciaId) => {
     if (!window.confirm("¿Seguro que deseas eliminar este archivo adjunto?")) return;
     try {
@@ -394,15 +392,6 @@ function DashboardApp({ user, onLogout }) {
     const res = await fetch(`${API_URL}/api/compensaciones`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...compData, horas_compensadas_minutos: totalMinutos })
     });
-
-    if (res.ok) {
-      const usuarioDestino = usuariosDB.find(u => String(u.id) === String(compData.usuario_id));
-      if (usuarioDestino && usuarioDestino.email) {
-        const asunto = encodeURIComponent("Notificación de Compensación Registrada - Remesas ASACh");
-        const cuerpo = encodeURIComponent(`Hola ${usuarioDestino.nombre},\n\nSe ha registrado una compensación de horas en tu cuenta:\n\n📅 Fecha: ${compData.fecha}\n⏰ Horas descontadas: ${formatTime(totalMinutos)} hrs\n📌 Motivo: ${compData.motivo}\n\nSaldo restante disponible: ${formatTime(saldoRealMinutos - totalMinutos)} hrs.\n\nSaludos,\nAdministración de Remesas ASACh`);
-        window.open(`mailto:${usuarioDestino.email}?subject=${asunto}&body=${cuerpo}`, '_blank');
-      }
-    }
 
     setShowModalComp(false); setCompData({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' }); fetchData();
   };
@@ -534,7 +523,7 @@ function DashboardApp({ user, onLogout }) {
 
   const solicitudesPendientes = isAdmin
     ? rawRegistros.filter(r => r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas')
-    : rawCompensaciones.filter(c => String(c.usuario_id) === String(user.id));
+    : rawRegistros.filter(r => String(r.usuario_id) === String(user.id) && (r.estado.includes('Aprobado') || r.estado.includes('Autorizado') || r.estado === 'Rechazado'));
 
   const indiceUltimoRegistro = paginaActual * registrosPorPagina;
   const indicePrimerRegistro = indiceUltimoRegistro - registrosPorPagina;
@@ -905,7 +894,7 @@ function DashboardApp({ user, onLogout }) {
                   <div className="bg-teal-800 text-white p-3.5 flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <Bell size={16} />
-                      <span className="font-bold text-xs">{isAdmin ? 'Solicitudes Pendientes' : 'Mis Notificaciones de Compensación'}</span>
+                      <span className="font-bold text-xs">{isAdmin ? 'Solicitudes Pendientes' : 'Mis Notificaciones de Propuestas'}</span>
                     </div>
                     {solicitudesPendientes.length > 0 && (
                       <span className="bg-amber-400 text-teal-900 font-bold text-[10px] px-2 py-0.5 rounded-full">
@@ -938,20 +927,20 @@ function DashboardApp({ user, onLogout }) {
                           </div>
                         ))
                       ) : (
-                        solicitudesPendientes.map(c => (
+                        solicitudesPendientes.map(r => (
                           <div
-                            key={c.id}
-                            onClick={() => { setActiveTab('compensaciones'); setShowNotificationsDropdown(false); }}
+                            key={r.id}
+                            onClick={() => { verDetallesRegistro(r.id); setShowNotificationsDropdown(false); }}
                             className="p-3 bg-white hover:bg-blue-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
                           >
                             <div className="flex justify-between items-center mb-1">
-                              <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
-                                Compensación aplicada
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${r.estado === 'Rechazado' ? 'text-red-700 bg-red-50' : 'text-blue-700 bg-blue-50'}`}>
+                                {r.estado === 'Rechazado' ? 'Propuesta Rechazada' : 'Propuesta Aprobada'}
                               </span>
-                              <span className="text-[10px] text-gray-400">{c.fecha}</span>
+                              <span className="text-[10px] text-gray-400">{r.fecha}</span>
                             </div>
-                            <p className="font-bold text-gray-800 text-xs">Motivo: {c.motivo}</p>
-                            <p className="text-[11px] text-red-600 font-bold mt-0.5">⏰ Descuento: -{formatTime(c.horas_compensadas_minutos)} hrs</p>
+                            <p className="font-bold text-gray-800 text-xs truncate">Actividad: {r.actividad}</p>
+                            <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
                             <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-blue-600 transition" />
                           </div>
                         ))
@@ -961,7 +950,7 @@ function DashboardApp({ user, onLogout }) {
 
                   <div className="p-2.5 bg-white border-t text-center">
                     <button
-                      onClick={() => { setActiveTab(isAdmin ? 'dashboard' : 'compensaciones'); setShowNotificationsDropdown(false); }}
+                      onClick={() => { setActiveTab('dashboard'); setShowNotificationsDropdown(false); }}
                       className="text-xs font-bold text-teal-800 hover:text-teal-900 transition"
                     >
                       Ver todos en el panel
@@ -1114,7 +1103,7 @@ function DashboardApp({ user, onLogout }) {
 
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowModalComp(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
-                <button type="submit" className="px-3 py-1.5 bg-green-600 text-white rounded font-bold">Registrar y Notificar</button>
+                <button type="submit" className="px-3 py-1.5 bg-green-600 text-white rounded font-bold">Registrar</button>
               </div>
             </form>
           </div>
