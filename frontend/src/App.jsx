@@ -5,6 +5,27 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as Recharts
 
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
 
+// Helper centralizado para enviar automáticamente el Token JWT y detectar sesión caducada
+const authFetch = async (url, options = {}) => {
+  const token = localStorage.getItem('token');
+  const headers = {
+    ...(options.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+
+  const res = await fetch(url, { ...options, headers });
+
+  if (res.status === 401 || res.status === 403) {
+    const data = await res.clone().json().catch(() => ({}));
+    if (data.error && (data.error.includes('expirada') || data.error.includes('inválido') || data.error.includes('denegado'))) {
+      localStorage.clear();
+      window.location.reload();
+    }
+  }
+
+  return res;
+};
+
 const formatTime = (mins) => {
   if (mins === undefined || mins === null || isNaN(mins)) return "00:00";
   const isNegative = mins < 0;
@@ -23,6 +44,7 @@ function LoginScreen({ onLogin }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     try {
       const res = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
@@ -111,16 +133,13 @@ function DashboardApp({ user, onLogout }) {
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
-  // Estado sincronizado directamente con PostgreSQL en Railway
   const [notificacionesLeidas, setNotificacionesLeidas] = useState([]);
 
   const marcarNotificacionLeida = async (idNotif) => {
     const idStr = String(idNotif);
-    // Actualización inmediata en pantalla
     setNotificacionesLeidas(prev => (prev.includes(idStr) ? prev : [...prev, idStr]));
-    // Persistencia permanente en base de datos
     try {
-      await fetch(`${API_URL}/api/notificaciones-leidas`, {
+      await authFetch(`${API_URL}/api/notificaciones-leidas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ usuario_id: user.id, notificacion_key: idStr })
@@ -140,26 +159,23 @@ function DashboardApp({ user, onLogout }) {
   const [userData, setUserData] = useState({ nombre: '', email: '', password: '', confirmPassword: '', departamento: '', rol: 'Auditor' });
   const [userError, setUserError] = useState('');
 
-  const queryParams = `?userId=${user.id}&rol=${user.rol}`;
-
   const fetchData = async () => {
     try {
-      // Cargar notificaciones ya leídas desde PostgreSQL
-      const resNotif = await fetch(`${API_URL}/api/notificaciones-leidas/${user.id}`);
+      const resNotif = await authFetch(`${API_URL}/api/notificaciones-leidas/${user.id}`);
       if (resNotif.ok) {
         const leidasDB = await resNotif.json();
         setNotificacionesLeidas(leidasDB.map(String));
       }
 
       if (isAdmin) {
-        const resUsers = await fetch(`${API_URL}/api/usuarios`);
-        if(resUsers.ok) setUsuariosDB(await resUsers.json());
+        const resUsers = await authFetch(`${API_URL}/api/usuarios`);
+        if (resUsers.ok) setUsuariosDB(await resUsers.json());
       }
 
-      const resEst = await fetch(`${API_URL}/api/estadisticas/completas${queryParams}`);
-      if(resEst.ok) {
+      const resEst = await authFetch(`${API_URL}/api/estadisticas/completas`);
+      if (resEst.ok) {
         const est = await resEst.json();
-        const resRegs = await fetch(`${API_URL}/api/registros/ultimos${queryParams}`);
+        const resRegs = await authFetch(`${API_URL}/api/registros/ultimos`);
         const regsConEvidencia = await resRegs.json();
 
         setRawRegistros(regsConEvidencia || est.registrosCompletos || []);
@@ -235,8 +251,8 @@ function DashboardApp({ user, onLogout }) {
 
   const verDetallesRegistro = async (id) => {
     try {
-        const res = await fetch(`${API_URL}/api/registros/${id}`);
-        if(res.ok) {
+        const res = await authFetch(`${API_URL}/api/registros/${id}`);
+        if (res.ok) {
           const data = await res.json();
           setRegistroDetalle(data);
         }
@@ -251,8 +267,8 @@ function DashboardApp({ user, onLogout }) {
       setFormData({ fecha: r.fecha, hora_inicio: r.hora_inicio || '', hora_termino: r.hora_termino || '', motivo: r.motivo, actividad: r.actividad, departamento: r.departamento || user.departamento });
       setEvidenciasGuardadas([]);
       try {
-          const res = await fetch(`${API_URL}/api/registros/${r.id}`);
-          if(res.ok) {
+          const res = await authFetch(`${API_URL}/api/registros/${r.id}`);
+          if (res.ok) {
               const data = await res.json();
               setIntervinientes(data.intervinientes || []);
               setEvidenciasGuardadas(data.evidencias || []);
@@ -262,8 +278,10 @@ function DashboardApp({ user, onLogout }) {
   };
 
   const cambiarEstado = async (id, nuevoEstado) => {
-      await fetch(`${API_URL}/api/registros/${id}/estado`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado: nuevoEstado })
+      await authFetch(`${API_URL}/api/registros/${id}/estado`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ estado: nuevoEstado })
       });
       setRegistroDetalle(null);
       fetchData();
@@ -295,7 +313,7 @@ function DashboardApp({ user, onLogout }) {
 
     setSubiendoArchivo(true);
     try {
-      const res = await fetch(`${API_URL}/api/evidencias`, {
+      const res = await authFetch(`${API_URL}/api/evidencias`, {
         method: 'POST',
         body: formDataUpload
       });
@@ -304,7 +322,7 @@ function DashboardApp({ user, onLogout }) {
         if (data.evidencia) {
           setEvidenciasGuardadas(prev => [...prev, data.evidencia]);
         } else {
-          const regRes = await fetch(`${API_URL}/api/registros/${registroId}`);
+          const regRes = await authFetch(`${API_URL}/api/registros/${registroId}`);
           if (regRes.ok) {
             const regData = await regRes.json();
             setEvidenciasGuardadas(regData.evidencias || []);
@@ -325,7 +343,7 @@ function DashboardApp({ user, onLogout }) {
   const handleDeleteEvidencia = async (evidenciaId) => {
     if (!window.confirm("¿Seguro que deseas eliminar este archivo adjunto?")) return;
     try {
-      const res = await fetch(`${API_URL}/api/evidencias/${evidenciaId}`, {
+      const res = await authFetch(`${API_URL}/api/evidencias/${evidenciaId}`, {
         method: 'DELETE'
       });
       if (res.ok) {
@@ -368,9 +386,9 @@ function DashboardApp({ user, onLogout }) {
     };
 
     if (editingId) {
-        await fetch(`${API_URL}/api/registros/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        await authFetch(`${API_URL}/api/registros/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     } else {
-        await fetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        await authFetch(`${API_URL}/api/registros`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     }
 
     setShowModal(false); setEditingId(null); setIntervinientes([]); setEvidenciasGuardadas([]);
@@ -420,14 +438,13 @@ function DashboardApp({ user, onLogout }) {
       return alert(`⚠️ Las horas a descontar superan el saldo pendiente de este auditor (${formatTime(saldoRealMinutos)} hrs disponibles).`);
     }
 
-    const res = await fetch(`${API_URL}/api/compensaciones`, {
+    const res = await authFetch(`${API_URL}/api/compensaciones`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...compData, horas_compensadas_minutos: totalMinutos })
     });
 
     if (res.ok) {
-      // Buscar los datos del auditor seleccionado para armar el borrador en Outlook
       const auditorSeleccionado = usuariosDB.find(u => String(u.id) === String(compData.usuario_id));
       const nuevoSaldoMinutos = saldoRealMinutos - totalMinutos;
 
@@ -446,7 +463,6 @@ function DashboardApp({ user, onLogout }) {
           `Administración - Control de Auditorías ASACh`
         );
 
-        // Abrir Outlook de escritorio con el correo prellenado
         window.location.href = `mailto:${auditorSeleccionado.email}?subject=${asunto}&body=${cuerpo}`;
       }
     }
@@ -484,7 +500,7 @@ function DashboardApp({ user, onLogout }) {
         const payload = { nombre: userData.nombre, email: userData.email, departamento: userData.departamento, rol: userData.rol };
         if (userData.password) payload.password = userData.password;
 
-        const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const res = await authFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await res.json();
         if (!res.ok) { setUserError(`⚠️ ${data.error || 'Error al guardar usuario'}`); return; }
 
@@ -1107,6 +1123,7 @@ function DashboardApp({ user, onLogout }) {
                   <>
                     <input
                       type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt"
                       disabled={subiendoArchivo}
                       onChange={(e) => handleFileUpload(e, editingId)}
                       className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50"
@@ -1304,7 +1321,12 @@ export default function App() {
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
-    if (savedUser) setUser(JSON.parse(savedUser));
+    const savedToken = localStorage.getItem('token');
+    if (savedUser && savedToken) {
+      setUser(JSON.parse(savedUser));
+    } else {
+      localStorage.clear();
+    }
     setLoading(false);
   }, []);
 
