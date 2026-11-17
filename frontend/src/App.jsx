@@ -109,14 +109,16 @@ function DashboardApp({ user, onLogout }) {
   const [compensaciones, setCompensaciones] = useState([]);
   const [usuariosDB, setUsuariosDB] = useState([]);
 
-  // Estados de filtros para la sección de Registros
+  // Estados de filtros para la sección de Registro de Auditorías (incluye filtro por auditor)
   const [regFiltroAnio, setRegFiltroAnio] = useState('todos');
   const [regFiltroMes, setRegFiltroMes] = useState('todos');
   const [regFiltroEstado, setRegFiltroEstado] = useState('todos');
+  const [regFiltroUsuario, setRegFiltroUsuario] = useState('todos');
 
-  // Estados de filtros para la sección de Compensaciones
+  // Estados de filtros para la sección de Compensaciones (incluye filtro por auditor)
   const [compFiltroAnio, setCompFiltroAnio] = useState('todos');
   const [compFiltroMes, setCompFiltroMes] = useState('todos');
+  const [compFiltroUsuario, setCompFiltroUsuario] = useState('todos');
 
   const [rawRegistros, setRawRegistros] = useState([]);
   const [rawCompensaciones, setRawCompensaciones] = useState([]);
@@ -589,18 +591,20 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
-  // Filtrado avanzado para la tabla de Registros
+  // Filtrado avanzado para la tabla de Registro de Auditorías (incluyendo filtro por auditor si es admin)
   const registrosFiltradosTabla = rawRegistros.filter(r => {
     if (!isAdmin && String(r.usuario_id) !== String(user.id)) return false;
+    if (isAdmin && regFiltroUsuario !== 'todos' && String(r.usuario_id) !== String(regFiltroUsuario)) return false;
     if (regFiltroAnio !== 'todos' && (!r.fecha || !r.fecha.startsWith(regFiltroAnio))) return false;
     if (regFiltroMes !== 'todos' && (!r.fecha || r.fecha.substring(5,7) !== regFiltroMes)) return false;
     if (regFiltroEstado !== 'todos' && r.estado !== regFiltroEstado) return false;
     return true;
   });
 
-  // Filtrado avanzado para la tabla de Compensaciones
+  // Filtrado avanzado para la tabla de Compensaciones (incluyendo filtro por auditor si es admin)
   const compensacionesFiltradasTabla = rawCompensaciones.filter(c => {
     if (!isAdmin && String(c.usuario_id) !== String(user.id)) return false;
+    if (isAdmin && compFiltroUsuario !== 'todos' && String(c.usuario_id) !== String(compFiltroUsuario)) return false;
     if (compFiltroAnio !== 'todos' && (!c.fecha || !c.fecha.startsWith(compFiltroAnio))) return false;
     if (compFiltroMes !== 'todos' && (!c.fecha || c.fecha.substring(5,7) !== compFiltroMes)) return false;
     return true;
@@ -701,10 +705,16 @@ function DashboardApp({ user, onLogout }) {
     if (activeTab === 'registros') {
         return (
             <div className="space-y-4">
-              {/* FILTROS EN LA PÁGINA DE REGISTROS */}
+              {/* FILTROS EN LA PÁGINA DE REGISTRO DE AUDITORÍAS */}
               <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-3 items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-gray-700 font-bold"><Filter size={16} className="text-teal-700"/> <span>Filtros de Registros:</span></div>
+                <div className="flex items-center gap-2 text-gray-700 font-bold"><Filter size={16} className="text-teal-700"/> <span>Filtros de Registro de Auditorías:</span></div>
                 <div className="flex flex-wrap gap-2 items-center">
+                  {isAdmin && (
+                    <select value={regFiltroUsuario} onChange={e => setRegFiltroUsuario(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
+                      <option value="todos">👥 Todos los Auditores</option>
+                      {auditoresSoloAuditores.map(u => (<option key={u.id} value={u.id}>{u.nombre}</option>))}
+                    </select>
+                  )}
                   <select value={regFiltroAnio} onChange={e => setRegFiltroAnio(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
                     <option value="todos">📅 Todos los Años</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option>
                   </select>
@@ -724,7 +734,7 @@ function DashboardApp({ user, onLogout }) {
 
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
                   <div className="p-3.5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-800">Historial General de Trabajos</h3>
+                    <h3 className="font-bold text-gray-800">Registro de Auditorías</h3>
                     <span className="text-gray-400 text-[11px]">Mostrando {registrosActualesPagina.length} de {registrosFiltradosTabla.length} registros</span>
                   </div>
                   <div className="overflow-x-auto">
@@ -808,6 +818,12 @@ function DashboardApp({ user, onLogout }) {
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-3 items-center justify-between text-xs">
             <div className="flex items-center gap-2 text-gray-700 font-bold"><Filter size={16} className="text-teal-700"/> <span>Filtros de Compensaciones:</span></div>
             <div className="flex flex-wrap gap-2 items-center">
+              {isAdmin && (
+                <select value={compFiltroUsuario} onChange={e => setCompFiltroUsuario(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
+                  <option value="todos">👥 Todos los Auditores</option>
+                  {auditoresSoloAuditores.map(u => (<option key={u.id} value={u.id}>{u.nombre}</option>))}
+                </select>
+              )}
               <select value={compFiltroAnio} onChange={e => setCompFiltroAnio(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
                 <option value="todos">📅 Todos los Años</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option>
               </select>
@@ -905,7 +921,7 @@ function DashboardApp({ user, onLogout }) {
           </div>
           <nav className="p-3 space-y-1">
             <button onClick={() => setActiveTab('dashboard')} className={menuClass('dashboard')}><LayoutDashboard size={18} /> Dashboard Visual</button>
-            <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><FileText size={18} /> Tablas de Registros</button>
+            <button onClick={() => setActiveTab('registros')} className={menuClass('registros')}><FileText size={18} /> Registro de Auditorías</button>
             <button onClick={() => setActiveTab('compensaciones')} className={menuClass('compensaciones')}><Clock size={18} /> Compensaciones</button>
             {isAdmin && <button onClick={() => setActiveTab('usuarios')} className={menuClass('usuarios')}><Users size={18} /> Usuarios</button>}
           </nav>
