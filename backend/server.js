@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const pool = require('./db');
 const { Storage } = require('@google-cloud/storage');
 const fileUpload = require('express-fileupload');
@@ -7,11 +8,93 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
-app.use(fileUpload()); // Habilita la recepción de archivos en req.files
+
+// ---------------------------------------------------------
+// 1. CONFIGURACIÓN DE SEGURIDAD (CORS, HEADERS Y RATE LIMIT)
+// ---------------------------------------------------------
+const allowedOrigins = process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(',').map(u => u.trim())
+    : [];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Permitir peticiones sin origin (apps móviles/Postman) o dominios Vercel/localhost
+        if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.startsWith('http://localhost')) {
+            return callback(null, true);
+        }
+        return callback(new Error('Origen no autorizado por política CORS'));
+    },
+    credentials: true
+}));
+
+// Cabeceras de seguridad HTTP básicas (sin dependencias extra)
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    next();
+});
+
+app.use(express.json({ limit: '2mb' }));
+app.use(fileUpload({
+    limits: { fileSize: 10 * 1024 * 1024 }, // Máximo 10 MB por archivo
+    abortOnLimit: true,
+    responseOnLimit: 'El archivo supera el límite máximo permitido de 10 MB.'
+}));
 
 const SECRET_KEY = process.env.SECRET_KEY || "FirmaSecretaBancoHoras2026";
+if (!process.env.SECRET_KEY) {
+    console.warn("⚠️ ADVERTENCIA DE SEGURIDAD: Configure la variable de entorno SECRET_KEY en Railway.");
+}
+
+// Protección contra fuerza bruta en /api/login (10 intentos cada 15 min por IP)
+const intentosLogin = new Map();
+const rateLimitLogin = (req, res, next) => {
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const ahora = Date.now();
+    const ventanaMs = 15 * 60 * 1000;
+    const registro = intentosLogin.get(ip) || { count: 0, inicio: ahora };
+
+    if (ahora - registro.inicio > ventanaMs) {
+        registro.count = 0;
+        registro.inicio = ahora;
+    }
+
+    if (registro.count >= 10) {
+        return res.status(429).json({ error: 'Demasiados intentos fallidos. Por seguridad, espere 15 minutos.' });
+    }
+
+    registro.count += 1;
+    intentosLogin.set(ip, registro);
+    next();
+};
+
+// ---------------------------------------------------------
+// 2. MIDDLEWARES DE AUTENTICACIÓN Y CONTROL DE ROLES
+// ---------------------------------------------------------
+const verificarToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ error: 'Acceso denegado. Debe iniciar sesión.' });
+    }
+
+    jwt.verify(token, SECRET_KEY, (err, decoded) => {
+        if (err) {
+            return res.status(403).json({ error: 'Sesión expirada o token inválido.' });
+        }
+        req.user = decoded; // { id, rol }
+        next();
+    });
+};
+
+const soloAdmin = (req, res, next) => {
+    if (!req.user || req.user.rol !== 'Administrador') {
+        return res.status(403).json({ error: 'Acceso restringido únicamente a Administradores.' });
+    }
+    next();
+};
 
 // ---------------------------------------------------------
 // CREACIÓN AUTOMÁTICA DE TABLA DE NOTIFICACIONES LEÍDAS
@@ -43,94 +126,124 @@ if (process.env.GOOGLE_CREDENTIALS_JSON) {
 const bucketName = process.env.GCS_BUCKET_NAME || process.env.GCP_BUCKET_NAME || 'auditorias-asach-evidencias';
 const bucket = storage.bucket(bucketName);
 
-// Login
-app.post('/api/login', async (req, res) => {
+// Extensiones permitidas para evidencia
+const EXTENSIONES_PERMITIDAS = ['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.txt'];
+
+// ---------------------------------------------------------
+// RUTA PÚBLICA: LOGIN
+// ---------------------------------------------------------
+app.post('/api/login', rateLimitLogin, async (req, res) => {
     const { email, password } = req.body;
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Debe ingresar correo y contraseña.' });
+    }
     try {
-        const result = await pool.query(`SELECT * FROM usuarios WHERE email = $1`, [email]);
+        const result = await pool.query(`SELECT * FROM usuarios WHERE email = $1`, [email.trim().toLowerCase()]);
         const user = result.rows[0];
         if (!user) return res.status(401).json({ error: 'Credenciales inválidas' });
         
         bcrypt.compare(password, user.password, (err, isMatch) => {
-            if (!isMatch) return res.status(401).json({ error: 'Credenciales inválidas' });
+            if (err || !isMatch) return res.status(401).json({ error: 'Credenciales inválidas' });
+            
+            // Limpiar contador de intentos fallidos al iniciar sesión con éxito
+            const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+            intentosLogin.delete(ip);
+
             const token = jwt.sign({ id: user.id, rol: user.rol }, SECRET_KEY, { expiresIn: '12h' });
             delete user.password;
             res.json({ token, user });
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error en login:', err.message);
+        res.status(500).json({ error: 'Error interno al procesar el inicio de sesión.' });
     }
 });
 
-// Obtener usuarios
-app.get('/api/usuarios', async (req, res) => {
+// ---------------------------------------------------------
+// RUTAS PROTEGIDAS: USUARIOS (SOLO ADMINISTRADOR)
+// ---------------------------------------------------------
+app.get('/api/usuarios', verificarToken, soloAdmin, async (req, res) => {
     try {
         const result = await pool.query(`SELECT id, nombre, email, cargo, departamento, rol, estado FROM usuarios ORDER BY id DESC`);
         res.json(result.rows || []);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error listando usuarios:', err.message);
+        res.status(500).json({ error: 'Error al obtener la lista de usuarios.' });
     }
 });
 
-// Crear usuario
-app.post('/api/usuarios', async (req, res) => {
+app.post('/api/usuarios', verificarToken, soloAdmin, async (req, res) => {
     const { nombre, email, password, cargo, departamento, rol } = req.body;
+    if (!nombre || !email || !password || password.length < 6) {
+        return res.status(400).json({ error: 'Complete todos los campos. La contraseña debe tener al menos 6 caracteres.' });
+    }
     try {
-        const userCheck = await pool.query(`SELECT id FROM usuarios WHERE email = $1`, [email]);
+        const emailLimpio = email.trim().toLowerCase();
+        const userCheck = await pool.query(`SELECT id FROM usuarios WHERE email = $1`, [emailLimpio]);
         if (userCheck.rows.length > 0) {
             return res.status(400).json({ error: 'El correo electrónico ya se encuentra registrado en el sistema.' });
         }
 
         bcrypt.hash(password, 10, async (err, hash) => {
-            if (err) return res.status(500).json({ error: 'Error al encriptar' });
+            if (err) return res.status(500).json({ error: 'Error al procesar seguridad de contraseña.' });
             try {
                 const result = await pool.query(
                     `INSERT INTO usuarios (nombre, email, password, cargo, departamento, rol) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, 
-                    [nombre, email, hash, cargo, departamento, rol]
+                    [nombre.trim(), emailLimpio, hash, cargo || '', departamento || '', rol || 'Auditor']
                 );
                 res.json({ success: true, id: result.rows[0].id });
             } catch (dbErr) {
-                res.status(500).json({ error: dbErr.message });
+                console.error('Error creando usuario:', dbErr.message);
+                res.status(500).json({ error: 'No se pudo registrar el usuario.' });
             }
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error verificando usuario:', err.message);
+        res.status(500).json({ error: 'Error interno del servidor.' });
     }
 });
 
-// Actualizar usuario (Edición)
-app.put('/api/usuarios/:id', async (req, res) => {
+app.put('/api/usuarios/:id', verificarToken, soloAdmin, async (req, res) => {
     const { id } = req.params;
     const { nombre, email, password, cargo, departamento, rol } = req.body;
     try {
+        const emailLimpio = email.trim().toLowerCase();
         if (password && password.trim() !== "") {
+            if (password.length < 6) {
+                return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+            }
             bcrypt.hash(password, 10, async (err, hash) => {
-                if (err) return res.status(500).json({ error: 'Error al encriptar contraseña' });
+                if (err) return res.status(500).json({ error: 'Error al encriptar contraseña.' });
                 try {
                     await pool.query(
                         `UPDATE usuarios SET nombre=$1, email=$2, password=$3, cargo=$4, departamento=$5, rol=$6 WHERE id=$7`,
-                        [nombre, email, hash, cargo, departamento, rol, id]
+                        [nombre.trim(), emailLimpio, hash, cargo || '', departamento || '', rol, id]
                     );
                     res.json({ success: true });
                 } catch (dbErr) {
-                    res.status(500).json({ error: dbErr.message });
+                    console.error('Error actualizando usuario:', dbErr.message);
+                    res.status(500).json({ error: 'No se pudo actualizar el usuario.' });
                 }
             });
         } else {
             await pool.query(
                 `UPDATE usuarios SET nombre=$1, email=$2, cargo=$3, departamento=$4, rol=$5 WHERE id=$6`,
-                [nombre, email, cargo, departamento, rol, id]
+                [nombre.trim(), emailLimpio, cargo || '', departamento || '', rol, id]
             );
             res.json({ success: true });
         }
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error en PUT usuario:', err.message);
+        res.status(500).json({ error: 'Error interno al actualizar usuario.' });
     }
 });
 
-// Estadísticas
-app.get('/api/estadisticas/completas', async (req, res) => {
-    const { userId, rol } = req.query;
+// ---------------------------------------------------------
+// RUTAS PROTEGIDAS: ESTADÍSTICAS Y REGISTROS
+// ---------------------------------------------------------
+app.get('/api/estadisticas/completas', verificarToken, async (req, res) => {
+    // Seguridad: Se usa estrictamente el ID y ROL del token JWT, ignorando query params manipulables
+    const { id: userId, rol } = req.user;
     try {
         let filterReg = '';
         let filterComp = '';
@@ -146,11 +259,13 @@ app.get('/api/estadisticas/completas', async (req, res) => {
 
         const regQuery = `SELECT r.*, COALESCE(u.nombre, 'Claudio Jaque') as auditor FROM registros_horas r LEFT JOIN usuarios u ON r.usuario_id = u.id ${filterReg}`;
         const compQuery = `SELECT c.*, COALESCE(u.nombre, 'Claudio Jaque') as auditor FROM compensaciones c LEFT JOIN usuarios u ON c.usuario_id = u.id ${filterComp}`;
-        const usersQuery = `SELECT id, nombre, cargo FROM usuarios WHERE estado = 1`;
+        const usersQuery = rol === 'Administrador'
+            ? `SELECT id, nombre, cargo, rol FROM usuarios WHERE estado = 1`
+            : `SELECT id, nombre, cargo, rol FROM usuarios WHERE id = $1`;
 
         const regRes = await pool.query(regQuery, paramsReg);
         const compRes = await pool.query(compQuery, paramsComp);
-        const usersRes = await pool.query(usersQuery);
+        const usersRes = rol === 'Administrador' ? await pool.query(usersQuery) : await pool.query(usersQuery, [userId]);
 
         res.json({ 
             registrosCompletos: regRes.rows || [], 
@@ -158,22 +273,25 @@ app.get('/api/estadisticas/completas', async (req, res) => {
             usuarios: usersRes.rows || [] 
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error en estadísticas:', err.message);
+        res.status(500).json({ error: 'Error al cargar estadísticas.' });
     }
 });
 
-// Registros de Horas / Propuestas
-app.post('/api/registros', async (req, res) => {
-    const { usuario_id, fecha, hora_inicio, hora_termino, horas_generadas_minutos, motivo, actividad, departamento, intervinientes } = req.body;
+app.post('/api/registros', verificarToken, async (req, res) => {
+    const { fecha, hora_inicio, hora_termino, horas_generadas_minutos, motivo, actividad, departamento, intervinientes } = req.body;
+    // Seguridad: Un usuario no administrador solo puede crear registros a su propio nombre
+    const usuario_id = (req.user.rol === 'Administrador' && req.body.usuario_id) ? req.body.usuario_id : req.user.id;
+
     try {
         const query = `INSERT INTO registros_horas (usuario_id, fecha, hora_inicio, hora_termino, horas_generadas_minutos, motivo, actividad, departamento, estado) 
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente') RETURNING id`;
-        const values = [usuario_id, fecha, hora_inicio || '', hora_termino || '', horas_generadas_minutos || 0, motivo, actividad, departamento];
+        const values = [usuario_id, fecha, hora_inicio || '', hora_termino || '', Math.max(0, Number(horas_generadas_minutos) || 0), motivo, actividad, departamento];
         
         const result = await pool.query(query, values);
         const regId = result.rows[0].id;
 
-        if (intervinientes && intervinientes.length > 0) {
+        if (intervinientes && Array.isArray(intervinientes) && intervinientes.length > 0) {
             for (const inv of intervinientes) {
                 await pool.query(
                     'INSERT INTO intervinientes (registro_id, nombre, cargo, participacion) VALUES ($1, $2, $3, $4)',
@@ -183,21 +301,38 @@ app.post('/api/registros', async (req, res) => {
         }
         res.json({ success: true, id: regId });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error creando registro:', err.message);
+        res.status(500).json({ error: 'No se pudo guardar el registro.' });
     }
 });
 
-app.put('/api/registros/:id', async (req, res) => {
+app.put('/api/registros/:id', verificarToken, async (req, res) => {
     const { fecha, hora_inicio, hora_termino, horas_generadas_minutos, motivo, actividad, intervinientes, estado } = req.body;
     const regId = req.params.id;
     try {
+        // Verificar propiedad del registro
+        const checkReg = await pool.query(`SELECT usuario_id, estado FROM registros_horas WHERE id = $1`, [regId]);
+        const actual = checkReg.rows[0];
+        if (!actual) return res.status(404).json({ error: 'Registro no encontrado.' });
+
+        if (req.user.rol !== 'Administrador' && String(actual.usuario_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'No tiene permisos para editar este registro.' });
+        }
+
+        // Seguridad: Un usuario normal no puede auto-aprobarse a 'Aprobado (Pendiente de Ejecución)' directamente
+        const estadosPermitidosUsuario = ['Pendiente', 'Revisión por Exceso de Horas', 'Ejecutado'];
+        let estadoFinal = estado || null;
+        if (req.user.rol !== 'Administrador' && estadoFinal && !estadosPermitidosUsuario.includes(estadoFinal)) {
+            estadoFinal = actual.estado;
+        }
+
         await pool.query(
             `UPDATE registros_horas SET fecha=$1, hora_inicio=$2, hora_termino=$3, horas_generadas_minutos=$4, motivo=$5, actividad=$6, estado=COALESCE($7, estado) WHERE id=$8`,
-            [fecha, hora_inicio, hora_termino, horas_generadas_minutos, motivo, actividad, estado || null, regId]
+            [fecha, hora_inicio, hora_termino, Math.max(0, Number(horas_generadas_minutos) || 0), motivo, actividad, estadoFinal, regId]
         );
 
         await pool.query(`DELETE FROM intervinientes WHERE registro_id = $1`, [regId]);
-        if (intervinientes && intervinientes.length > 0) {
+        if (intervinientes && Array.isArray(intervinientes) && intervinientes.length > 0) {
             for (const inv of intervinientes) {
                 await pool.query(
                     'INSERT INTO intervinientes (registro_id, nombre, cargo, participacion) VALUES ($1, $2, $3, $4)',
@@ -207,23 +342,26 @@ app.put('/api/registros/:id', async (req, res) => {
         }
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error actualizando registro:', err.message);
+        res.status(500).json({ error: 'No se pudo actualizar el registro.' });
     }
 });
 
-app.put('/api/registros/:id/estado', async (req, res) => {
+// Aprobar o rechazar (SOLO ADMINISTRADOR)
+app.put('/api/registros/:id/estado', verificarToken, soloAdmin, async (req, res) => {
     try {
         await pool.query(`UPDATE registros_horas SET estado = $1 WHERE id = $2`, [req.body.estado, req.params.id]);
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error cambiando estado:', err.message);
+        res.status(500).json({ error: 'Error al cambiar el estado del registro.' });
     }
 });
 
 // ---------------------------------------------------------
-// RUTA DE EVIDENCIAS CON GOOGLE CLOUD STORAGE
+// RUTA DE EVIDENCIAS CON GOOGLE CLOUD STORAGE (VALIDADA)
 // ---------------------------------------------------------
-app.post('/api/evidencias', async (req, res) => {
+app.post('/api/evidencias', verificarToken, async (req, res) => {
     if (!req.files || !req.files.archivo) {
         return res.status(400).json({ error: 'No se ha adjuntado ningún archivo.' });
     }
@@ -235,8 +373,25 @@ app.post('/api/evidencias', async (req, res) => {
         return res.status(400).json({ error: 'Falta el ID del registro para asociar la evidencia.' });
     }
 
+    // Validar extensión del archivo
+    const ext = path.extname(archivo.name).toLowerCase();
+    if (!EXTENSIONES_PERMITIDAS.includes(ext)) {
+        return res.status(400).json({ error: `Formato de archivo no permitido (${ext}). Use PDF, imágenes, Word o Excel.` });
+    }
+
     try {
-        const nombreUnico = `evidencias/${Date.now()}-${archivo.name}`;
+        // Verificar que el registro exista y pertenezca al usuario (o sea Admin)
+        const regCheck = await pool.query(`SELECT usuario_id FROM registros_horas WHERE id = $1`, [registro_id]);
+        if (regCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'El registro asociado no existe.' });
+        }
+        if (req.user.rol !== 'Administrador' && String(regCheck.rows[0].usuario_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'No tiene permisos para subir archivos a este registro.' });
+        }
+
+        // Sanitizar nombre de archivo para evitar path traversal
+        const nombreLimpio = archivo.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const nombreUnico = `evidencias/${Date.now()}-${nombreLimpio}`;
         const blob = bucket.file(nombreUnico);
 
         const blobStream = blob.createWriteStream({
@@ -247,7 +402,7 @@ app.post('/api/evidencias', async (req, res) => {
         });
 
         blobStream.on('error', (err) => {
-            console.error('Error al subir a Google Cloud:', err);
+            console.error('Error al subir a Google Cloud:', err.message);
             return res.status(500).json({ error: 'Error al subir el archivo a Google Cloud.' });
         });
 
@@ -261,25 +416,32 @@ app.post('/api/evidencias', async (req, res) => {
                 );
                 return res.json({ success: true, url: publicUrl, evidencia: evInsert.rows[0] });
             } catch (dbErr) {
-                console.error('Error al guardar en base de datos:', dbErr);
+                console.error('Error al guardar evidencia en BD:', dbErr.message);
                 return res.status(500).json({ error: 'Archivo subido a la nube, pero falló al registrar en la base de datos.' });
             }
         });
 
         blobStream.end(archivo.data);
     } catch (err) {
-        console.error('Error interno:', err);
-        res.status(500).json({ error: err.message });
+        console.error('Error interno en evidencias:', err.message);
+        res.status(500).json({ error: 'Error interno al procesar el archivo.' });
     }
 });
 
-// Eliminar una evidencia específica (de GCS y de PostgreSQL)
-app.delete('/api/evidencias/:id', async (req, res) => {
+// Eliminar evidencia (con validación de propiedad)
+app.delete('/api/evidencias/:id', verificarToken, async (req, res) => {
     const { id } = req.params;
     try {
-        const evRes = await pool.query(`SELECT * FROM evidencias WHERE id = $1`, [id]);
+        const evRes = await pool.query(
+            `SELECT e.*, r.usuario_id FROM evidencias e JOIN registros_horas r ON e.registro_id = r.id WHERE e.id = $1`,
+            [id]
+        );
         const evidencia = evRes.rows[0];
         if (!evidencia) return res.status(404).json({ error: 'Evidencia no encontrada' });
+
+        if (req.user.rol !== 'Administrador' && String(evidencia.usuario_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'No tiene permisos para eliminar este archivo.' });
+        }
 
         const prefix = `https://storage.googleapis.com/${bucket.name}/`;
         if (evidencia.archivo_url && evidencia.archivo_url.startsWith(prefix)) {
@@ -290,12 +452,13 @@ app.delete('/api/evidencias/:id', async (req, res) => {
         await pool.query(`DELETE FROM evidencias WHERE id = $1`, [id]);
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error eliminando evidencia:', err.message);
+        res.status(500).json({ error: 'No se pudo eliminar la evidencia.' });
     }
 });
 
-app.get('/api/registros/ultimos', async (req, res) => {
-    const { userId, rol } = req.query;
+app.get('/api/registros/ultimos', verificarToken, async (req, res) => {
+    const { id: userId, rol } = req.user;
     try {
         let filter = '';
         let params = [];
@@ -314,11 +477,12 @@ app.get('/api/registros/ultimos', async (req, res) => {
         const result = await pool.query(query, params);
         res.json(result.rows || []);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error listando registros:', err.message);
+        res.status(500).json({ error: 'Error al obtener registros.' });
     }
 });
 
-app.get('/api/registros/:id', async (req, res) => {
+app.get('/api/registros/:id', verificarToken, async (req, res) => {
     const { id } = req.params;
     try {
         const regRes = await pool.query(
@@ -329,6 +493,10 @@ app.get('/api/registros/:id', async (req, res) => {
         const registro = regRes.rows[0];
         if (!registro) return res.status(404).json({ error: 'Registro no encontrado' });
 
+        if (req.user.rol !== 'Administrador' && String(registro.usuario_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'No tiene permisos para ver este registro.' });
+        }
+
         const evRes = await pool.query(`SELECT * FROM evidencias WHERE registro_id = $1 ORDER BY id ASC`, [id]);
         const intRes = await pool.query(`SELECT * FROM intervinientes WHERE registro_id = $1`, [id]);
 
@@ -338,26 +506,30 @@ app.get('/api/registros/:id', async (req, res) => {
             intervinientes: intRes.rows || [] 
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error obteniendo detalle:', err.message);
+        res.status(500).json({ error: 'Error al cargar el detalle del registro.' });
     }
 });
 
-// Compensaciones
-app.post('/api/compensaciones', async (req, res) => {
+// ---------------------------------------------------------
+// COMPENSACIONES (CREACIÓN SOLO ADMINISTRADOR)
+// ---------------------------------------------------------
+app.post('/api/compensaciones', verificarToken, soloAdmin, async (req, res) => {
     const { usuario_id, fecha, horas_compensadas_minutos, motivo, observaciones } = req.body;
     try {
         await pool.query(
             `INSERT INTO compensaciones (usuario_id, fecha, horas_compensadas_minutos, motivo, observaciones) VALUES ($1, $2, $3, $4, $5)`, 
-            [usuario_id, fecha, horas_compensadas_minutos, motivo, observaciones]
+            [usuario_id, fecha, Math.max(1, Number(horas_compensadas_minutos) || 0), motivo, observaciones]
         );
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error registrando compensación:', err.message);
+        res.status(500).json({ error: 'No se pudo registrar la compensación.' });
     }
 });
 
-app.get('/api/compensaciones', async (req, res) => {
-    const { userId, rol } = req.query;
+app.get('/api/compensaciones', verificarToken, async (req, res) => {
+    const { id: userId, rol } = req.user;
     try {
         let filter = '';
         let params = [];
@@ -369,27 +541,32 @@ app.get('/api/compensaciones', async (req, res) => {
         const result = await pool.query(query, params);
         res.json(result.rows || []);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error listando compensaciones:', err.message);
+        res.status(500).json({ error: 'Error al obtener compensaciones.' });
     }
 });
 
 // ---------------------------------------------------------
 // RUTAS DE NOTIFICACIONES LEÍDAS PERSISTENTES EN BASE DE DATOS
 // ---------------------------------------------------------
-app.get('/api/notificaciones-leidas/:usuarioId', async (req, res) => {
+app.get('/api/notificaciones-leidas/:usuarioId', verificarToken, async (req, res) => {
+    // Seguridad: Solo puede consultar sus propias notificaciones
+    const targetId = req.user.id;
     try {
         const result = await pool.query(
             `SELECT notificacion_key FROM notificaciones_leidas WHERE usuario_id = $1`,
-            [req.params.usuarioId]
+            [targetId]
         );
         res.json(result.rows.map(r => r.notificacion_key));
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error obteniendo notificaciones:', err.message);
+        res.status(500).json({ error: 'Error al obtener notificaciones.' });
     }
 });
 
-app.post('/api/notificaciones-leidas', async (req, res) => {
-    const { usuario_id, notificacion_key } = req.body;
+app.post('/api/notificaciones-leidas', verificarToken, async (req, res) => {
+    const usuario_id = req.user.id;
+    const { notificacion_key } = req.body;
     try {
         await pool.query(
             `INSERT INTO notificaciones_leidas (usuario_id, notificacion_key) 
@@ -398,9 +575,10 @@ app.post('/api/notificaciones-leidas', async (req, res) => {
         );
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error guardando notificación:', err.message);
+        res.status(500).json({ error: 'Error al marcar notificación como leída.' });
     }
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Backend seguro con PostgreSQL y GCS ejecutándose en el puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Backend seguro con PostgreSQL, JWT y GCS ejecutándose en el puerto ${PORT}`));
