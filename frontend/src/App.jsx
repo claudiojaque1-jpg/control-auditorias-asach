@@ -109,9 +109,14 @@ function DashboardApp({ user, onLogout }) {
   const [compensaciones, setCompensaciones] = useState([]);
   const [usuariosDB, setUsuariosDB] = useState([]);
 
-  const [dashFiltroAnio, setDashFiltroAnio] = useState('2026');
-  const [dashFiltroMes, setDashFiltroMes] = useState('todos');
-  const [dashFiltroUsuario, setDashFiltroUsuario] = useState('todos');
+  // Estados de filtros para la sección de Registros
+  const [regFiltroAnio, setRegFiltroAnio] = useState('todos');
+  const [regFiltroMes, setRegFiltroMes] = useState('todos');
+  const [regFiltroEstado, setRegFiltroEstado] = useState('todos');
+
+  // Estados de filtros para la sección de Compensaciones
+  const [compFiltroAnio, setCompFiltroAnio] = useState('todos');
+  const [compFiltroMes, setCompFiltroMes] = useState('todos');
 
   const [rawRegistros, setRawRegistros] = useState([]);
   const [rawCompensaciones, setRawCompensaciones] = useState([]);
@@ -182,7 +187,7 @@ function DashboardApp({ user, onLogout }) {
         setRawCompensaciones(est.compensacionesCompletas || est.compensaciones || []);
         setRawUsuarios(est.usuarios || []);
 
-        aplicarFiltrosDashboard(regsConEvidencia || [], est.compensacionesCompletas || est.compensaciones || [], est.usuarios || []);
+        calcularEstadisticasGenerales(regsConEvidencia || [], est.compensacionesCompletas || est.compensaciones || [], est.usuarios || []);
       }
     } catch (err) {
       console.error("Error conectando al servidor", err);
@@ -197,7 +202,7 @@ function DashboardApp({ user, onLogout }) {
     return () => clearInterval(timer);
   }, []);
 
-  const aplicarFiltrosDashboard = (todosRegs, todasComps, todosUsers) => {
+  const calcularEstadisticasGenerales = (todosRegs, todasComps, todosUsers) => {
       let regsFiltradas = todosRegs;
       let compsFiltradas = todasComps;
 
@@ -206,19 +211,6 @@ function DashboardApp({ user, onLogout }) {
       if (!isAdmin) {
           regsFiltradas = regsFiltradas.filter(r => String(r.usuario_id) === String(user.id));
           compsFiltradas = compsFiltradas.filter(c => String(c.usuario_id) === String(user.id));
-      } else if (dashFiltroUsuario !== 'todos') {
-          regsFiltradas = regsFiltradas.filter(r => String(r.usuario_id) === String(dashFiltroUsuario));
-          compsFiltradas = compsFiltradas.filter(c => String(c.usuario_id) === String(dashFiltroUsuario));
-      }
-
-      if (dashFiltroAnio !== 'todos') {
-          regsFiltradas = regsFiltradas.filter(r => r.fecha && r.fecha.startsWith(dashFiltroAnio));
-          compsFiltradas = compsFiltradas.filter(c => c.fecha && c.fecha.startsWith(dashFiltroAnio));
-      }
-
-      if (dashFiltroMes !== 'todos') {
-          regsFiltradas = regsFiltradas.filter(r => r.fecha && r.fecha.substring(5,7) === dashFiltroMes);
-          compsFiltradas = compsFiltradas.filter(c => c.fecha && c.fecha.substring(5,7) === dashFiltroMes);
       }
 
       let genMin = 0, compMin = 0, porAprobarMin = 0;
@@ -245,9 +237,9 @@ function DashboardApp({ user, onLogout }) {
 
   useEffect(() => {
       if (rawRegistros.length > 0) {
-          aplicarFiltrosDashboard(rawRegistros, rawCompensaciones, rawUsuarios);
+          calcularEstadisticasGenerales(rawRegistros, rawCompensaciones, rawUsuarios);
       }
-  }, [dashFiltroAnio, dashFiltroMes, dashFiltroUsuario]);
+  }, [rawRegistros, rawCompensaciones]);
 
   const verDetallesRegistro = async (id) => {
     try {
@@ -597,6 +589,23 @@ function DashboardApp({ user, onLogout }) {
     };
   });
 
+  // Filtrado avanzado para la tabla de Registros
+  const registrosFiltradosTabla = rawRegistros.filter(r => {
+    if (!isAdmin && String(r.usuario_id) !== String(user.id)) return false;
+    if (regFiltroAnio !== 'todos' && (!r.fecha || !r.fecha.startsWith(regFiltroAnio))) return false;
+    if (regFiltroMes !== 'todos' && (!r.fecha || r.fecha.substring(5,7) !== regFiltroMes)) return false;
+    if (regFiltroEstado !== 'todos' && r.estado !== regFiltroEstado) return false;
+    return true;
+  });
+
+  // Filtrado avanzado para la tabla de Compensaciones
+  const compensacionesFiltradasTabla = rawCompensaciones.filter(c => {
+    if (!isAdmin && String(c.usuario_id) !== String(user.id)) return false;
+    if (compFiltroAnio !== 'todos' && (!c.fecha || !c.fecha.startsWith(compFiltroAnio))) return false;
+    if (compFiltroMes !== 'todos' && (!c.fecha || c.fecha.substring(5,7) !== compFiltroMes)) return false;
+    return true;
+  });
+
   const leidasSet = new Set(notificacionesLeidas.map(String));
 
   const registrosNotif = isAdmin
@@ -611,8 +620,8 @@ function DashboardApp({ user, onLogout }) {
 
   const indiceUltimoRegistro = paginaActual * registrosPorPagina;
   const indicePrimerRegistro = indiceUltimoRegistro - registrosPorPagina;
-  const registrosActuales = registros.slice(indicePrimerRegistro, indiceUltimoRegistro);
-  const totalPaginas = Math.ceil(registros.length / registrosPorPagina);
+  const registrosActualesPagina = registrosFiltradosTabla.slice(indicePrimerRegistro, indiceUltimoRegistro);
+  const totalPaginas = Math.ceil(registrosFiltradosTabla.length / registrosPorPagina);
 
   const menuClass = (tab) => `flex items-center gap-2.5 p-2.5 w-full rounded-lg transition text-left text-xs ${activeTab === tab ? (isAdmin ? 'bg-teal-900 font-bold' : 'bg-blue-800 font-bold') : (isAdmin ? 'hover:bg-teal-900' : 'hover:bg-blue-800')}`;
 
@@ -622,58 +631,42 @@ function DashboardApp({ user, onLogout }) {
         <div className="space-y-6">
           {stats.pendientes < 0 && <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded text-xs flex items-center gap-2"><AlertTriangle className="text-red-500" size={16} /><p className="text-red-700 font-medium">Hay <strong>{formatTime(stats.pendientes)} horas de déficit</strong> en el periodo seleccionado.</p></div>}
 
-          {isAdmin && (
-              <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-3 items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 text-gray-700 font-bold"><Filter size={16} className="text-teal-700"/> <span>Filtros del Dashboard:</span></div>
-                  <div className="flex flex-wrap gap-2 items-center">
-                      <select value={dashFiltroAnio} onChange={e => setDashFiltroAnio(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
-                          <option value="todos">📅 Todos los Años</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option>
-                      </select>
-                      <select value={dashFiltroMes} onChange={e => setDashFiltroMes(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
-                          <option value="todos">📆 Todos los Meses</option><option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option><option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option><option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
-                      </select>
-                      <select value={dashFiltroUsuario} onChange={e => setDashFiltroUsuario(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
-                          <option value="todos">👥 Todos los Auditores</option>
-                          {auditoresSoloAuditores.map(u => (<option key={u.id} value={u.id}>{u.nombre}</option>))}
-                      </select>
-                  </div>
-              </div>
-          )}
-
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-emerald-500 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">Ejecutadas</p><h2 className={`text-2xl font-extrabold mt-1 ${themeText}`}>{formatTime(stats.generadas)}</h2></div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-blue-500 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">Compensadas</p><h2 className="text-2xl font-extrabold text-blue-600 mt-1">{formatTime(stats.compensadas)}</h2></div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-indigo-500 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">Saldo (A favor)</p><h2 className="text-2xl font-extrabold text-indigo-600 mt-1">{formatTime(stats.pendientes)}</h2></div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-amber-500 flex flex-col justify-between"><p className="text-amber-700 text-xs font-semibold uppercase">En Propuesta</p><h2 className="text-2xl font-extrabold text-amber-500 mt-1">{registros.filter(r => r.estado === 'Pendiente').length}</h2></div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 border-l-4 border-l-gray-400 flex flex-col justify-between"><p className="text-gray-400 text-xs font-semibold uppercase">{isAdmin ? "Auditores Activos" : "Mis Registros"}</p><h2 className="text-2xl font-extrabold text-gray-700 mt-1">{isAdmin ? stats.auditores : registros.length}</h2></div>
+          {/* TARJETAS KPI COMPACTAS */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 border-l-4 border-l-emerald-500 flex flex-col justify-between"><p className="text-gray-400 text-[10px] font-semibold uppercase">Ejecutadas</p><h2 className={`text-xl font-extrabold mt-0.5 ${themeText}`}>{formatTime(stats.generadas)}</h2></div>
+            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 border-l-4 border-l-blue-500 flex flex-col justify-between"><p className="text-gray-400 text-[10px] font-semibold uppercase">Compensadas</p><h2 className="text-xl font-extrabold text-blue-600 mt-0.5">{formatTime(stats.compensadas)}</h2></div>
+            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 border-l-4 border-l-indigo-500 flex flex-col justify-between"><p className="text-gray-400 text-[10px] font-semibold uppercase">Saldo (A favor)</p><h2 className="text-xl font-extrabold text-indigo-600 mt-0.5">{formatTime(stats.pendientes)}</h2></div>
+            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 border-l-4 border-l-amber-500 flex flex-col justify-between"><p className="text-amber-700 text-[10px] font-semibold uppercase">En Propuesta</p><h2 className="text-xl font-extrabold text-amber-500 mt-0.5">{registros.filter(r => r.estado === 'Pendiente').length}</h2></div>
+            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 border-l-4 border-l-gray-400 flex flex-col justify-between"><p className="text-gray-400 text-[10px] font-semibold uppercase">{isAdmin ? "Auditores Activos" : "Mis Registros"}</p><h2 className="text-xl font-extrabold text-gray-700 mt-0.5">{isAdmin ? stats.auditores : registros.length}</h2></div>
           </div>
 
+          {/* GRÁFICOS ORGANIZADOS EN LA PÁGINA PRINCIPAL */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 lg:col-span-2 flex flex-col justify-between">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 lg:col-span-2 flex flex-col justify-between">
               <h3 className="font-bold text-gray-700 text-sm mb-3">Tendencia de Horas Reales (por Mes en Hrs)</h3>
-              <div className="h-64 w-full">
+              <div className="h-60 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={tendenciaData}>
-                    <XAxis dataKey="mes" stroke="#888888" fontSize={12} />
-                    <YAxis stroke="#888888" fontSize={12} />
+                    <XAxis dataKey="mes" stroke="#888888" fontSize={11} />
+                    <YAxis stroke="#888888" fontSize={11} />
                     <RechartsTooltip formatter={(value) => [`${value} hrs`, '']} />
                     <Legend />
-                    <Line type="monotone" dataKey="Realizadas" stroke="#059669" strokeWidth={2} dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="Compensadas" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="Realizadas" stroke="#059669" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="Compensadas" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
               <h3 className="font-bold text-gray-700 text-sm mb-3">Distribución por Estado</h3>
-              <div className="h-64 w-full flex items-center justify-center">
+              <div className="h-60 w-full flex items-center justify-center">
                 {estadoData.length === 0 ? (
                   <p className="text-gray-400 text-xs">Sin datos registrados</p>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={estadoData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} fill="#8884d8" label={({ name, value }) => `${name}: ${value}`}>
+                      <Pie data={estadoData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} fill="#8884d8" label={({ name, value }) => `${name}: ${value}`}>
                         {estadoData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
                       </Pie>
                       <RechartsTooltip />
@@ -685,13 +678,13 @@ function DashboardApp({ user, onLogout }) {
           </div>
 
           {isAdmin && (
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
               <h3 className="font-bold text-gray-700 text-sm mb-3">Comparativa por Auditor: Horas Aprobadas vs Compensadas (en Hrs)</h3>
-              <div className="h-64 w-full">
+              <div className="h-60 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={auditoresDataDoble}>
-                    <XAxis dataKey="nombre" stroke="#888888" fontSize={12} />
-                    <YAxis stroke="#888888" fontSize={12} />
+                    <XAxis dataKey="nombre" stroke="#888888" fontSize={11} />
+                    <YAxis stroke="#888888" fontSize={11} />
                     <RechartsTooltip formatter={(value) => [`${value} hrs`, '']} />
                     <Legend />
                     <Bar dataKey="Aprobadas" fill="#10b981" radius={[4, 4, 0, 0]} />
@@ -701,156 +694,109 @@ function DashboardApp({ user, onLogout }) {
               </div>
             </div>
           )}
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-3.5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-              <h3 className="font-bold text-gray-800 text-xs">Trabajos Registrados (Filtrados)</h3>
-              <span className="text-gray-400 text-[11px]">Mostrando {registrosActuales.length} de {registros.length} registros</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-white border-b text-gray-500">
-                    <th className="p-3 whitespace-nowrap">Fecha / Horario Propuesto</th>
-                    {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
-                    <th className="p-3">Actividad Propuesta</th>
-                    <th className="p-3 whitespace-nowrap">Tiempo Total</th>
-                    <th className="p-3 whitespace-nowrap">Estado</th>
-                    <th className="p-3 text-center whitespace-nowrap">Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {registrosActuales.length === 0 ? (<tr><td colSpan="6" className="p-4 text-center text-gray-500">No hay registros para este filtro</td></tr>) : registrosActuales.map(r => (
-                    <tr key={r.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3 whitespace-nowrap"><div className="font-medium text-gray-800">{r.fecha}</div><div className="text-[11px] text-gray-500">{r.hora_inicio && r.hora_termino ? `⏰ ${r.hora_inicio} a ${r.hora_termino}` : 'Sin horario'}</div></td>
-                      {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
-                      <td className="p-3 truncate max-w-xs">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee archivo de evidencia" />}</td>
-                      <td className="p-3 font-bold text-gray-700 whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs ({r.horas_generadas_minutos || 0} min)</td>
-                      <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
-                      <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
-                          <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600 transition" title="Ver Detalle"><Eye size={16} /></button>
-
-                          {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
-                            <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition shadow-sm" title="Adjuntar evidencia y finalizar">
-                              <Check size={14} /> Finalizar / Evidencia
-                            </button>
-                          )}
-
-                          {(!isAdmin && r.estado === 'Pendiente') && (
-                            <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
-                          )}
-
-                          {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
-                            <>
-                              <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded text-[11px] font-medium transition">
-                                {r.estado === 'Revisión por Exceso de Horas' ? 'Aprobar Cambio' : 'Aprobar'}
-                              </button>
-                              <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-1 rounded text-[11px] font-medium transition">Rechazar</button>
-                            </>
-                          )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {totalPaginas > 1 && (
-              <div className="p-3 bg-gray-50 border-t flex justify-between items-center text-xs">
-                <button
-                  disabled={paginaActual === 1}
-                  onClick={() => setPaginaActual(p => Math.max(p - 1, 1))}
-                  className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
-                >
-                  <ChevronLeft size={14} /> Anterior
-                </button>
-                <span className="text-gray-600 font-bold">Página {paginaActual} de {totalPaginas}</span>
-                <button
-                  disabled={paginaActual === totalPaginas}
-                  onClick={() => setPaginaActual(p => Math.min(p + 1, totalPaginas))}
-                  className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
-                >
-                  Siguiente <ChevronRight size={14} />
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       );
     }
 
     if (activeTab === 'registros') {
         return (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
-                <div className="p-3.5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                  <h3 className="font-bold text-gray-800">Historial General de Trabajos</h3>
-                  <span className="text-gray-400 text-[11px]">Mostrando {registrosActuales.length} de {rawRegistros.length} registros</span>
+            <div className="space-y-4">
+              {/* FILTROS EN LA PÁGINA DE REGISTROS */}
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-3 items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-gray-700 font-bold"><Filter size={16} className="text-teal-700"/> <span>Filtros de Registros:</span></div>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <select value={regFiltroAnio} onChange={e => setRegFiltroAnio(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
+                    <option value="todos">📅 Todos los Años</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option>
+                  </select>
+                  <select value={regFiltroMes} onChange={e => setRegFiltroMes(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
+                    <option value="todos">📆 Todos los Meses</option><option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option><option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option><option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+                  </select>
+                  <select value={regFiltroEstado} onChange={e => setRegFiltroEstado(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
+                    <option value="todos">📌 Todos los Estados</option>
+                    <option value="Pendiente">Pendiente Autorización</option>
+                    <option value="Aprobado (Pendiente de Ejecución)">Aprobado (Pendiente)</option>
+                    <option value="Ejecutado">Ejecutado</option>
+                    <option value="Revisión por Exceso de Horas">Cambio Horario</option>
+                    <option value="Rechazado">Rechazado</option>
+                  </select>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-white border-b text-gray-500">
-                          <th className="p-3 whitespace-nowrap">Fecha</th>
-                          {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
-                          <th className="p-3">Actividad</th>
-                          <th className="p-3 whitespace-nowrap">Tiempo</th>
-                          <th className="p-3 whitespace-nowrap">Estado</th>
-                          <th className="p-3 text-center whitespace-nowrap">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                      {rawRegistros.slice(indicePrimerRegistro, indiceUltimoRegistro).map(r => (
-                          <tr key={r.id} className="border-b hover:bg-gray-50">
-                              <td className="p-3 whitespace-nowrap">{r.fecha}</td>
-                              {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
-                              <td className="p-3">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee archivo de evidencia" />}</td>
-                              <td className="p-3 font-bold whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs</td>
-                              <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
-                              <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
-                                  <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600" title="Ver Detalle"><Eye size={16} /></button>
+              </div>
 
-                                  {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
-                                    <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1">
-                                      <Check size={14} /> Finalizar / Evidencia
-                                    </button>
-                                  )}
-
-                                  {(!isAdmin && r.estado === 'Pendiente') && (
-                                    <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
-                                  )}
-
-                                  {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
-                                    <>
-                                      <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
-                                      <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Rechazar</button>
-                                    </>
-                                  )}
-                              </td>
-                          </tr>
-                      ))}
-                      </tbody>
-                  </table>
-                </div>
-
-                {Math.ceil(rawRegistros.length / registrosPorPagina) > 1 && (
-                  <div className="p-3 bg-gray-50 border-t flex justify-between items-center text-xs">
-                    <button
-                      disabled={paginaActual === 1}
-                      onClick={() => setPaginaActual(p => Math.max(p - 1, 1))}
-                      className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
-                    >
-                      <ChevronLeft size={14} /> Anterior
-                    </button>
-                    <span className="text-gray-600 font-bold">Página {paginaActual} de {Math.ceil(rawRegistros.length / registrosPorPagina)}</span>
-                    <button
-                      disabled={paginaActual === Math.ceil(rawRegistros.length / registrosPorPagina)}
-                      onClick={() => setPaginaActual(p => Math.min(p + 1, Math.ceil(rawRegistros.length / registrosPorPagina)))}
-                      className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
-                    >
-                      Siguiente <ChevronRight size={14} />
-                    </button>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
+                  <div className="p-3.5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                    <h3 className="font-bold text-gray-800">Historial General de Trabajos</h3>
+                    <span className="text-gray-400 text-[11px]">Mostrando {registrosActualesPagina.length} de {registrosFiltradosTabla.length} registros</span>
                   </div>
-                )}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-white border-b text-gray-500">
+                            <th className="p-3 whitespace-nowrap">Fecha</th>
+                            {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
+                            <th className="p-3">Actividad</th>
+                            <th className="p-3 whitespace-nowrap">Tiempo</th>
+                            <th className="p-3 whitespace-nowrap">Estado</th>
+                            <th className="p-3 text-center whitespace-nowrap">Acción</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                        {registrosActualesPagina.length === 0 ? (
+                          <tr><td colSpan="6" className="p-4 text-center text-gray-500">No hay registros para este filtro</td></tr>
+                        ) : (
+                          registrosActualesPagina.map(r => (
+                              <tr key={r.id} className="border-b hover:bg-gray-50">
+                                  <td className="p-3 whitespace-nowrap">{r.fecha}</td>
+                                  {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
+                                  <td className="p-3">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee archivo de evidencia" />}</td>
+                                  <td className="p-3 font-bold whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs</td>
+                                  <td className="p-3 whitespace-nowrap">{renderBadgeEstado(r.estado)}</td>
+                                  <td className="p-3 flex justify-center gap-2 items-center whitespace-nowrap">
+                                      <button onClick={() => verDetallesRegistro(r.id)} className="text-gray-500 hover:text-blue-600" title="Ver Detalle"><Eye size={16} /></button>
+
+                                      {!isAdmin && (r.estado === 'Aprobado (Pendiente de Ejecución)' || r.estado === 'Autorizado') && String(r.usuario_id) === String(user.id) && (
+                                        <button onClick={() => abrirEdicion(r)} className="bg-emerald-600 text-white px-2 py-1 rounded text-[11px] font-bold flex items-center gap-1">
+                                          <Check size={14} /> Finalizar / Evidencia
+                                        </button>
+                                      )}
+
+                                      {(!isAdmin && r.estado === 'Pendiente') && (
+                                        <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
+                                      )}
+
+                                      {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
+                                        <>
+                                          <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
+                                          <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Rechazar</button>
+                                        </>
+                                      )}
+                                  </td>
+                              </tr>
+                          ))
+                        )}
+                        </tbody>
+                    </table>
+                  </div>
+
+                  {Math.ceil(registrosFiltradosTabla.length / registrosPorPagina) > 1 && (
+                    <div className="p-3 bg-gray-50 border-t flex justify-between items-center text-xs">
+                      <button
+                        disabled={paginaActual === 1}
+                        onClick={() => setPaginaActual(p => Math.max(p - 1, 1))}
+                        className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
+                      >
+                        <ChevronLeft size={14} /> Anterior
+                      </button>
+                      <span className="text-gray-600 font-bold">Página {paginaActual} de {Math.ceil(registrosFiltradosTabla.length / registrosPorPagina)}</span>
+                      <button
+                        disabled={paginaActual === Math.ceil(registrosFiltradosTabla.length / registrosPorPagina)}
+                        onClick={() => setPaginaActual(p => Math.min(p + 1, Math.ceil(registrosFiltradosTabla.length / registrosPorPagina)))}
+                        className="px-3 py-1 bg-white border rounded disabled:opacity-50 flex items-center gap-1 font-medium"
+                      >
+                        Siguiente <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  )}
+              </div>
             </div>
         );
     }
@@ -858,6 +804,19 @@ function DashboardApp({ user, onLogout }) {
     if (activeTab === 'compensaciones') {
       return (
         <div className="space-y-4">
+          {/* FILTROS EN LA PÁGINA DE COMPENSACIONES */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-3 items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-gray-700 font-bold"><Filter size={16} className="text-teal-700"/> <span>Filtros de Compensaciones:</span></div>
+            <div className="flex flex-wrap gap-2 items-center">
+              <select value={compFiltroAnio} onChange={e => setCompFiltroAnio(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
+                <option value="todos">📅 Todos los Años</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option>
+              </select>
+              <select value={compFiltroMes} onChange={e => setCompFiltroMes(e.target.value)} className="border rounded-lg p-2 text-xs bg-gray-50 outline-none">
+                <option value="todos">📆 Todos los Meses</option><option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option><option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option><option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+              </select>
+            </div>
+          </div>
+
           <div className="flex justify-between items-center bg-white p-3.5 rounded-xl shadow-sm border border-gray-100">
             <div>
               <h2 className="text-base font-bold text-gray-800">
@@ -879,10 +838,10 @@ function DashboardApp({ user, onLogout }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {compensaciones.length === 0 ? (
-                    <tr><td colSpan="4" className="p-4 text-center text-gray-400">No hay compensaciones registradas.</td></tr>
+                  {compensacionesFiltradasTabla.length === 0 ? (
+                    <tr><td colSpan="4" className="p-4 text-center text-gray-400">No hay compensaciones registradas para este filtro.</td></tr>
                   ) : (
-                    compensaciones.map(c => (
+                    compensacionesFiltradasTabla.map(c => (
                       <tr key={c.id} className="border-b hover:bg-gray-50">
                         <td className="p-3 whitespace-nowrap">{c.fecha}</td>
                         {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{c.auditor}</td>}
@@ -937,8 +896,9 @@ function DashboardApp({ user, onLogout }) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <aside className={`w-64 ${themeBg} text-white flex flex-col justify-between hidden md:flex shadow-xl`}>
-        <div>
+      {/* PANEL LATERAL CON BOTÓN DE CERRAR SESIÓN FIJO */}
+      <aside className={`w-64 ${themeBg} text-white flex flex-col justify-between hidden md:flex shadow-xl h-screen sticky top-0`}>
+        <div className="overflow-y-auto">
           <div className="p-5 border-b border-teal-700/50 flex items-center gap-3">
             <img src={LOGO_URL} alt="Logo" className="w-10 h-10 object-contain bg-white rounded-lg p-1" />
             <div><h1 className="font-bold text-sm leading-tight">AUDITORÍAS ASACh</h1><span className="text-[10px] text-teal-200">Panel de Administración</span></div>
@@ -950,7 +910,7 @@ function DashboardApp({ user, onLogout }) {
             {isAdmin && <button onClick={() => setActiveTab('usuarios')} className={menuClass('usuarios')}><Users size={18} /> Usuarios</button>}
           </nav>
         </div>
-        <div className="p-4 border-t border-teal-700/50 flex items-center justify-between text-xs">
+        <div className="p-4 border-t border-teal-700/50 flex items-center justify-between text-xs bg-black/10 shrink-0">
           <div><p className="font-bold">{user.nombre}</p><p className="text-[11px] text-teal-200">{user.rol}</p></div>
           <button onClick={onLogout} className="p-2 hover:bg-teal-900 rounded-lg text-teal-200 hover:text-white transition flex items-center gap-1" title="Cerrar Sesión"><LogOut size={16} /> Cerrar Sesión</button>
         </div>
