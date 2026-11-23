@@ -97,7 +97,7 @@ const soloAdmin = (req, res, next) => {
 };
 
 // ---------------------------------------------------------
-// CREACIÓN AUTOMÁTICA DE TABLA DE NOTIFICACIONES LEÍDAS
+// CREACIÓN AUTOMÁTICA DE TABLAS AUXILIARES
 // ---------------------------------------------------------
 pool.query(`
     CREATE TABLE IF NOT EXISTS notificaciones_leidas (
@@ -108,6 +108,19 @@ pool.query(`
         UNIQUE(usuario_id, notificacion_key)
     )
 `).catch(err => console.error('Error verificando tabla notificaciones_leidas:', err.message));
+
+pool.query(`
+    CREATE TABLE IF NOT EXISTS solicitudes_compensacion (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL,
+        fecha VARCHAR(20) NOT NULL,
+        horas_solicitadas_minutos INTEGER NOT NULL,
+        motivo VARCHAR(100) NOT NULL,
+        observaciones TEXT,
+        estado VARCHAR(30) DEFAULT 'Pendiente',
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+`).catch(err => console.error('Error verificando tabla solicitudes_compensacion:', err.message));
 
 // ---------------------------------------------------------
 // CONFIGURACIÓN DE GOOGLE CLOUD STORAGE
@@ -347,6 +360,44 @@ app.put('/api/registros/:id', verificarToken, async (req, res) => {
     }
 });
 
+// Eliminar auditoría fallida / no ejecutada
+app.delete('/api/registros/:id', verificarToken, async (req, res) => {
+    const regId = req.params.id;
+    try {
+        const checkReg = await pool.query(`SELECT usuario_id, estado FROM registros_horas WHERE id = $1`, [regId]);
+        const actual = checkReg.rows[0];
+        if (!actual) return res.status(404).json({ error: 'Registro no encontrado.' });
+
+        if (req.user.rol !== 'Administrador' && String(actual.usuario_id) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'No tiene permisos para eliminar este registro.' });
+        }
+
+        if (req.user.rol !== 'Administrador' && actual.estado === 'Ejecutado') {
+            return res.status(403).json({ error: 'No se puede eliminar una auditoría ya ejecutada.' });
+        }
+
+        // Eliminar archivos asociados en Google Cloud Storage si existen
+        const evRes = await pool.query(`SELECT archivo_url FROM evidencias WHERE registro_id = $1`, [regId]);
+        const prefix = `https://storage.googleapis.com/${bucket.name}/`;
+        for (const ev of evRes.rows) {
+            if (ev.archivo_url && ev.archivo_url.startsWith(prefix)) {
+                const filePath = decodeURIComponent(ev.archivo_url.replace(prefix, ''));
+                await bucket.file(filePath).delete().catch(err => console.warn('Aviso al borrar en GCS:', err.message));
+            }
+        }
+
+        await pool.query(`DELETE FROM evidencias WHERE registro_id = $1`, [regId]);
+        await pool.query(`DELETE FROM intervinientes WHERE registro_id = $1`, [regId]);
+        await pool.query(`DELETE FROM notificaciones_leidas WHERE notificacion_key = $1`, [String(regId)]);
+        await pool.query(`DELETE FROM registros_horas WHERE id = $1`, [regId]);
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error eliminando registro:', err.message);
+        res.status(500).json({ error: 'No se pudo eliminar el registro.' });
+    }
+});
+
 // Aprobar o rechazar (SOLO ADMINISTRADOR)
 app.put('/api/registros/:id/estado', verificarToken, soloAdmin, async (req, res) => {
     try {
@@ -512,7 +563,7 @@ app.get('/api/registros/:id', verificarToken, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// COMPENSACIONES (CREACIÓN SOLO ADMINISTRADOR)
+// COMPENSACIONES Y SOLICITUDES DE COMPENSACIÓN
 // ---------------------------------------------------------
 app.post('/api/compensaciones', verificarToken, soloAdmin, async (req, res) => {
     const { usuario_id, fecha, horas_compensadas_minutos, motivo, observaciones } = req.body;
@@ -543,6 +594,83 @@ app.get('/api/compensaciones', verificarToken, async (req, res) => {
     } catch (err) {
         console.error('Error listando compensaciones:', err.message);
         res.status(500).json({ error: 'Error al obtener compensaciones.' });
+    }
+});
+
+app.get('/api/solicitudes-compensacion', verificarToken, async (req, res) => {
+    const { id: userId, rol } = req.user;
+    try {
+        let filter = '';
+        let params = [];
+        if (rol !== 'Administrador') {
+            filter = 'WHERE s.usuario_id = $1';
+            params = [userId];
+        }
+        const query = `
+            SELECT s.*, COALESCE(u.nombre, 'Auditor') as auditor, u.email as auditor_email
+            FROM solicitudes_compensacion s
+            LEFT JOIN usuarios u ON s.usuario_id = u.id
+            ${filter}
+            ORDER BY s.id DESC
+        `;
+        const result = await pool.query(query, params);
+        res.json(result.rows || []);
+    } catch (err) {
+        console.error('Error listando solicitudes de compensación:', err.message);
+        res.status(500).json({ error: 'Error al obtener solicitudes de compensación.' });
+    }
+});
+
+app.post('/api/solicitudes-compensacion', verificarToken, async (req, res) => {
+    const { fecha, horas_solicitadas_minutos, motivo, observaciones } = req.body;
+    const usuario_id = req.user.id;
+    const minutos = Math.max(1, Number(horas_solicitadas_minutos) || 0);
+
+    try {
+        const result = await pool.query(
+            `INSERT INTO solicitudes_compensacion (usuario_id, fecha, horas_solicitadas_minutos, motivo, observaciones, estado)
+             VALUES ($1, $2, $3, $4, $5, 'Pendiente') RETURNING *`,
+            [usuario_id, fecha, minutos, motivo, observaciones || '']
+        );
+        res.json({ success: true, solicitud: result.rows[0] });
+    } catch (err) {
+        console.error('Error creando solicitud de compensación:', err.message);
+        res.status(500).json({ error: 'No se pudo enviar la solicitud de compensación.' });
+    }
+});
+
+app.put('/api/solicitudes-compensacion/:id/aprobar', verificarToken, soloAdmin, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const solRes = await pool.query(`SELECT * FROM solicitudes_compensacion WHERE id = $1`, [id]);
+        const solicitud = solRes.rows[0];
+        if (!solicitud) return res.status(404).json({ error: 'Solicitud no encontrada.' });
+        if (solicitud.estado !== 'Pendiente') {
+            return res.status(400).json({ error: 'Esta solicitud ya fue procesada.' });
+        }
+
+        await pool.query(
+            `INSERT INTO compensaciones (usuario_id, fecha, horas_compensadas_minutos, motivo, observaciones)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [solicitud.usuario_id, solicitud.fecha, solicitud.horas_solicitadas_minutos, solicitud.motivo, solicitud.observaciones || '']
+        );
+
+        await pool.query(`UPDATE solicitudes_compensacion SET estado = 'Aprobada' WHERE id = $1`, [id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error aprobando solicitud de compensación:', err.message);
+        res.status(500).json({ error: 'No se pudo aprobar la solicitud de compensación.' });
+    }
+});
+
+app.put('/api/solicitudes-compensacion/:id/rechazar', verificarToken, soloAdmin, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query(`UPDATE solicitudes_compensacion SET estado = 'Rechazada' WHERE id = $1`, [id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error rechazando solicitud de compensación:', err.message);
+        res.status(500).json({ error: 'No se pudo rechazar la solicitud de compensación.' });
     }
 });
 
