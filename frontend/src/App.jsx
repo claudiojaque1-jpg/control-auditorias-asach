@@ -552,6 +552,31 @@ function DashboardApp({ user, onLogout }) {
       });
       if (res.ok) {
         marcarNotificacionLeida(`solcomp-${sol.id}`);
+
+        const auditorObj = usuariosDB.find(u => String(u.id) === String(sol.usuario_id)) || rawUsuarios.find(u => String(u.id) === String(sol.usuario_id));
+        const correoAuditor = sol.auditor_email || (auditorObj && auditorObj.email) || '';
+        const nombreAuditor = sol.auditor || (auditorObj && auditorObj.nombre) || 'Auditor';
+        const nuevoSaldoMinutos = saldoActual - Number(sol.horas_solicitadas_minutos || 0);
+
+        if (correoAuditor) {
+          const asunto = encodeURIComponent(`Compensación Aprobada y Asignada - ${nombreAuditor}`);
+          const cuerpo = encodeURIComponent(
+            `Estimado/a ${nombreAuditor},\n\n` +
+            `Se ha aprobado y asignado tu solicitud de compensación de horas en el Sistema de Control de Auditorías ASACh con el siguiente detalle:\n\n` +
+            `• Fecha: ${sol.fecha}\n` +
+            `• Tiempo compensado: ${formatTime(sol.horas_solicitadas_minutos)} hrs (${sol.horas_solicitadas_minutos} minutos)\n` +
+            `• Motivo: ${sol.motivo}\n` +
+            (sol.observaciones ? `• Observaciones: ${sol.observaciones}\n` : '') +
+            `• Saldo anterior: ${formatTime(saldoActual)} hrs\n` +
+            `• Nuevo saldo a favor: ${formatTime(nuevoSaldoMinutos)} hrs\n\n` +
+            `Saludos cordiales,\n` +
+            `${user.nombre}\n` +
+            `Administración - Control de Auditorías ASACh`
+          );
+
+          window.location.href = `mailto:${correoAuditor}?subject=${asunto}&body=${cuerpo}`;
+        }
+
         fetchData();
       } else {
         const data = await res.json().catch(() => ({}));
