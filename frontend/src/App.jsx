@@ -107,6 +107,7 @@ function DashboardApp({ user, onLogout }) {
 
   const [registros, setRegistros] = useState([]);
   const [compensaciones, setCompensaciones] = useState([]);
+  const [solicitudesCompensacion, setSolicitudesCompensacion] = useState([]);
   const [usuariosDB, setUsuariosDB] = useState([]);
 
   // Estados de filtros para la sección de Registro de Auditorías (incluye filtro por auditor)
@@ -129,6 +130,7 @@ function DashboardApp({ user, onLogout }) {
 
   const [showModal, setShowModal] = useState(false);
   const [showModalComp, setShowModalComp] = useState(false);
+  const [showModalSolicitudComp, setShowModalSolicitudComp] = useState(false);
   const [showModalUser, setShowModalUser] = useState(false);
   const [registroDetalle, setRegistroDetalle] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -136,6 +138,7 @@ function DashboardApp({ user, onLogout }) {
 
   const [minutosOriginales, setMinutosOriginales] = useState(0);
   const [horarioOriginal, setHorarioOriginal] = useState({ inicio: '', termino: '' });
+  const [fechaOriginal, setFechaOriginal] = useState('');
 
   const [intervinientes, setIntervinientes] = useState([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
@@ -161,6 +164,7 @@ function DashboardApp({ user, onLogout }) {
 
   const [formData, setFormData] = useState({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento });
   const [compData, setCompData] = useState({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' });
+  const [solicitudCompData, setSolicitudCompData] = useState({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '' });
 
   const [editingUserId, setEditingUserId] = useState(null);
   const [userData, setUserData] = useState({ nombre: '', email: '', password: '', confirmPassword: '', departamento: '', rol: 'Auditor' });
@@ -177,6 +181,11 @@ function DashboardApp({ user, onLogout }) {
       if (isAdmin) {
         const resUsers = await authFetch(`${API_URL}/api/usuarios`);
         if (resUsers.ok) setUsuariosDB(await resUsers.json());
+      }
+
+      const resSolComp = await authFetch(`${API_URL}/api/solicitudes-compensacion`);
+      if (resSolComp.ok) {
+        setSolicitudesCompensacion(await resSolComp.json());
       }
 
       const resEst = await authFetch(`${API_URL}/api/estadisticas/completas`);
@@ -258,6 +267,7 @@ function DashboardApp({ user, onLogout }) {
       setEditingEstado(r.estado);
       setMinutosOriginales(r.horas_generadas_minutos || 0);
       setHorarioOriginal({ inicio: r.hora_inicio || '', termino: r.hora_termino || '' });
+      setFechaOriginal(r.fecha || '');
       setFormData({ fecha: r.fecha, hora_inicio: r.hora_inicio || '', hora_termino: r.hora_termino || '', motivo: r.motivo, actividad: r.actividad, departamento: r.departamento || user.departamento });
       setEvidenciasGuardadas([]);
       try {
@@ -279,6 +289,25 @@ function DashboardApp({ user, onLogout }) {
       });
       setRegistroDetalle(null);
       fetchData();
+  };
+
+  const eliminarRegistroFallido = async (r) => {
+      if (!window.confirm(`¿Seguro que deseas eliminar la auditoría "${r.actividad}" del ${r.fecha}? Esta acción eliminará por completo el registro.`)) {
+        return;
+      }
+      try {
+        const res = await authFetch(`${API_URL}/api/registros/${r.id}`, {
+          method: 'DELETE'
+        });
+        if (res.ok) {
+          fetchData();
+        } else {
+          const data = await res.json().catch(() => ({}));
+          alert(`⚠️ Error al eliminar: ${data.error || 'No se pudo eliminar el registro.'}`);
+        }
+      } catch (err) {
+        alert("⚠️ Error de conexión al eliminar el registro.");
+      }
   };
 
   const calcularMinutos = () => {
@@ -359,11 +388,12 @@ function DashboardApp({ user, onLogout }) {
     let nuevoEstado = editingEstado;
     const horarioAlterado = (formData.hora_inicio !== horarioOriginal.inicio) || (formData.hora_termino !== horarioOriginal.termino);
     const tiempoCambiado = minutosNuevos !== minutosOriginales;
+    const fechaAlterada = formData.fecha !== fechaOriginal;
 
     if (!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado')) {
-      if (horarioAlterado || tiempoCambiado) {
+      if (fechaAlterada || horarioAlterado || tiempoCambiado) {
         nuevoEstado = 'Revisión por Exceso de Horas';
-        alert(`⚠️ El horario ha sido modificado (${formData.hora_inicio} - ${formData.hora_termino}). La solicitud se ha enviado a la campanita de notificaciones de la Administradora para su re-autorización.`);
+        alert(`⚠️ El día o el horario ha sido modificado (${formData.fecha} | ${formData.hora_inicio} - ${formData.hora_termino}). La solicitud se ha enviado a la campanita de notificaciones de la Administradora para su re-autorización.`);
       } else if (marcarFinalizado) {
         nuevoEstado = 'Ejecutado';
       }
@@ -464,6 +494,86 @@ function DashboardApp({ user, onLogout }) {
     setShowModalComp(false);
     setCompData({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '', usuario_id: '' });
     fetchData();
+  };
+
+  const handleSolicitudCompSubmit = async (e) => {
+    e.preventDefault();
+    let totalMinutos = 0;
+    if (solicitudCompData.horas.includes(':')) {
+      const [h, m] = solicitudCompData.horas.split(':').map(Number);
+      totalMinutos = (h * 60) + (m || 0);
+    } else {
+      totalMinutos = Number(solicitudCompData.horas) * 60;
+    }
+
+    if (isNaN(totalMinutos) || totalMinutos <= 0) {
+      return alert("Por favor, ingrese un tiempo válido en formato HH:MM.");
+    }
+
+    const saldoDisponible = obtenerSaldoAuditorSeleccionado(user.id);
+    if (totalMinutos > saldoDisponible) {
+      return alert(`⚠️ Las horas solicitadas superan tu saldo disponible (${formatTime(saldoDisponible)} hrs).`);
+    }
+
+    try {
+      const res = await authFetch(`${API_URL}/api/solicitudes-compensacion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fecha: solicitudCompData.fecha,
+          horas_solicitadas_minutos: totalMinutos,
+          motivo: solicitudCompData.motivo,
+          observaciones: solicitudCompData.observaciones
+        })
+      });
+
+      if (res.ok) {
+        alert("✅ Solicitud de compensación enviada al Administrador.");
+        setShowModalSolicitudComp(false);
+        setSolicitudCompData({ fecha: new Date().toISOString().split('T')[0], horas: '', motivo: 'Salida anticipada', observaciones: '' });
+        fetchData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(`⚠️ ${data.error || 'No se pudo enviar la solicitud.'}`);
+      }
+    } catch (err) {
+      alert("⚠️ Error de conexión al enviar la solicitud.");
+    }
+  };
+
+  const aprobarSolicitudCompensacion = async (sol) => {
+    const saldoActual = obtenerSaldoAuditorSeleccionado(sol.usuario_id);
+    if (sol.horas_solicitadas_minutos > saldoActual) {
+      return alert(`⚠️ El auditor solo tiene ${formatTime(saldoActual)} hrs disponibles para compensar.`);
+    }
+    try {
+      const res = await authFetch(`${API_URL}/api/solicitudes-compensacion/${sol.id}/aprobar`, {
+        method: 'PUT'
+      });
+      if (res.ok) {
+        marcarNotificacionLeida(`solcomp-${sol.id}`);
+        fetchData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(`⚠️ ${data.error || 'No se pudo aprobar la solicitud.'}`);
+      }
+    } catch (err) {
+      alert("⚠️ Error de conexión al aprobar la solicitud.");
+    }
+  };
+
+  const rechazarSolicitudCompensacion = async (sol) => {
+    try {
+      const res = await authFetch(`${API_URL}/api/solicitudes-compensacion/${sol.id}/rechazar`, {
+        method: 'PUT'
+      });
+      if (res.ok) {
+        marcarNotificacionLeida(`solcomp-${sol.id}`);
+        fetchData();
+      }
+    } catch (err) {
+      alert("⚠️ Error de conexión al rechazar la solicitud.");
+    }
   };
 
   const abrirCreacionUsuario = () => {
@@ -616,11 +726,15 @@ function DashboardApp({ user, onLogout }) {
     ? rawRegistros.filter(r => (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && !leidasSet.has(String(r.id)))
     : rawRegistros.filter(r => String(r.usuario_id) === String(user.id) && (r.estado.includes('Aprobado') || r.estado.includes('Autorizado') || r.estado === 'Rechazado') && !leidasSet.has(String(r.id)));
 
+  const solicitudesCompNotifAdmin = isAdmin
+    ? solicitudesCompensacion.filter(s => s.estado === 'Pendiente' && !leidasSet.has(`solcomp-${s.id}`))
+    : [];
+
   const compensacionesNotif = !isAdmin
     ? rawCompensaciones.filter(c => String(c.usuario_id) === String(user.id) && !leidasSet.has(String(`comp-${c.id}`)))
     : [];
 
-  const totalNotificacionesCount = registrosNotif.length + compensacionesNotif.length;
+  const totalNotificacionesCount = registrosNotif.length + solicitudesCompNotifAdmin.length + compensacionesNotif.length;
 
   const indiceUltimoRegistro = paginaActual * registrosPorPagina;
   const indicePrimerRegistro = indiceUltimoRegistro - registrosPorPagina;
@@ -773,6 +887,10 @@ function DashboardApp({ user, onLogout }) {
                                         <button onClick={() => abrirEdicion(r)} className="text-gray-500 hover:text-blue-600 transition" title="Editar"><Edit size={16} /></button>
                                       )}
 
+                                      {!isAdmin && r.estado !== 'Ejecutado' && String(r.usuario_id) === String(user.id) && (
+                                        <button onClick={() => eliminarRegistroFallido(r)} className="text-red-500 hover:text-red-700 transition" title="Eliminar auditoría no realizada"><Trash2 size={16} /></button>
+                                      )}
+
                                       {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
                                         <>
                                           <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
@@ -812,6 +930,9 @@ function DashboardApp({ user, onLogout }) {
     }
 
     if (activeTab === 'compensaciones') {
+      const solicitudesPendientesAdmin = solicitudesCompensacion.filter(s => s.estado === 'Pendiente');
+      const misSolicitudesComp = solicitudesCompensacion.filter(s => String(s.usuario_id) === String(user.id));
+
       return (
         <div className="space-y-4">
           {/* FILTROS EN LA PÁGINA DE COMPENSACIONES */}
@@ -838,10 +959,86 @@ function DashboardApp({ user, onLogout }) {
               <h2 className="text-base font-bold text-gray-800">
                 {isAdmin ? 'Historial de Compensaciones' : 'Mi Historial de Compensaciones'}
               </h2>
-              {!isAdmin && <p className="text-gray-400 text-xs">Detalle de horas descontadas de tu saldo disponible</p>}
+              {!isAdmin && <p className="text-gray-400 text-xs">Detalle de horas descontadas de tu saldo disponible ({formatTime(stats.pendientes)} hrs a favor)</p>}
             </div>
-            {isAdmin && <button onClick={() => setShowModalComp(true)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 flex gap-1.5 items-center"><Plus size={16} /> Registrar Compensación</button>}
+            {isAdmin ? (
+              <button onClick={() => setShowModalComp(true)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 flex gap-1.5 items-center"><Plus size={16} /> Registrar Compensación</button>
+            ) : (
+              <button onClick={() => setShowModalSolicitudComp(true)} className="bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-800 flex gap-1.5 items-center"><Plus size={16} /> Solicitar Compensación</button>
+            )}
           </div>
+
+          {/* SOLICITUDES DE COMPENSACIÓN PENDIENTES (VISTA ADMIN) */}
+          {isAdmin && solicitudesPendientesAdmin.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden text-xs">
+              <div className="p-3 bg-amber-50 border-b border-amber-200 flex justify-between items-center">
+                <h3 className="font-bold text-amber-900">Solicitudes de Compensación Pendientes ({solicitudesPendientesAdmin.length})</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-white border-b text-gray-500">
+                      <th className="p-3 whitespace-nowrap">Fecha</th>
+                      <th className="p-3 whitespace-nowrap">Auditor</th>
+                      <th className="p-3">Motivo</th>
+                      <th className="p-3 whitespace-nowrap">Horas Solicitadas</th>
+                      <th className="p-3 text-center whitespace-nowrap">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {solicitudesPendientesAdmin.map(s => (
+                      <tr key={s.id} className="border-b hover:bg-amber-50/40">
+                        <td className="p-3 whitespace-nowrap">{s.fecha}</td>
+                        <td className="p-3 font-medium whitespace-nowrap">{s.auditor}</td>
+                        <td className="p-3">{s.motivo} {s.observaciones ? <span className="text-gray-400">({s.observaciones})</span> : null}</td>
+                        <td className="p-3 font-bold text-blue-700 whitespace-nowrap">{formatTime(s.horas_solicitadas_minutos)} hrs</td>
+                        <td className="p-3 flex justify-center gap-2 whitespace-nowrap">
+                          <button onClick={() => aprobarSolicitudCompensacion(s)} className="bg-green-600 text-white px-2.5 py-1 rounded text-[11px] font-bold hover:bg-green-700">Asignar / Aprobar</button>
+                          <button onClick={() => rechazarSolicitudCompensacion(s)} className="bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded text-[11px] font-medium hover:bg-red-100">Rechazar</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* MIS SOLICITUDES DE COMPENSACIÓN (VISTA AUDITOR) */}
+          {!isAdmin && misSolicitudesComp.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
+              <div className="p-3 bg-gray-50 border-b border-gray-100">
+                <h3 className="font-bold text-gray-700">Mis Solicitudes de Compensación</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-white border-b text-gray-500">
+                      <th className="p-3 whitespace-nowrap">Fecha</th>
+                      <th className="p-3">Motivo</th>
+                      <th className="p-3 whitespace-nowrap">Horas Solicitadas</th>
+                      <th className="p-3 whitespace-nowrap">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {misSolicitudesComp.map(s => (
+                      <tr key={s.id} className="border-b hover:bg-gray-50">
+                        <td className="p-3 whitespace-nowrap">{s.fecha}</td>
+                        <td className="p-3">{s.motivo}</td>
+                        <td className="p-3 font-bold text-blue-700 whitespace-nowrap">{formatTime(s.horas_solicitadas_minutos)} hrs</td>
+                        <td className="p-3 whitespace-nowrap">
+                          {s.estado === 'Aprobada' && <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-green-100 text-green-800">Aprobada y Asignada</span>}
+                          {s.estado === 'Rechazada' && <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800">Rechazada</span>}
+                          {s.estado === 'Pendiente' && <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-yellow-100 text-yellow-800">Pendiente</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -954,7 +1151,7 @@ function DashboardApp({ user, onLogout }) {
                   <div className="bg-teal-800 text-white p-3.5 flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <Bell size={16} />
-                      <span className="font-bold text-xs">{isAdmin ? 'Solicitudes Pendientes' : 'Mis Notificaciones de Propuestas'}</span>
+                      <span className="font-bold text-xs">{isAdmin ? 'Solicitudes Pendientes' : 'Mis Notificaciones'}</span>
                     </div>
                     {totalNotificacionesCount > 0 && (
                       <span className="bg-amber-400 text-teal-900 font-bold text-[10px] px-2 py-0.5 rounded-full">
@@ -968,24 +1165,45 @@ function DashboardApp({ user, onLogout }) {
                       <p className="text-gray-400 text-center py-6 text-xs font-medium">No hay notificaciones pendientes.</p>
                     ) : (
                       isAdmin ? (
-                        registrosNotif.map(r => (
-                          <div
-                            key={r.id}
-                            onClick={() => { verDetallesRegistro(r.id); setShowNotificationsDropdown(false); }}
-                            className="p-3 bg-white hover:bg-teal-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
-                          >
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                                {r.estado === 'Revisión por Exceso de Horas' ? 'Horario Modificado' : (r.motivo || 'Auditoría')}
-                              </span>
-                              <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                        <>
+                          {registrosNotif.map(r => (
+                            <div
+                              key={r.id}
+                              onClick={() => { verDetallesRegistro(r.id); setShowNotificationsDropdown(false); }}
+                              className="p-3 bg-white hover:bg-teal-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
+                            >
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
+                                  {r.estado === 'Revisión por Exceso de Horas' ? 'Día / Horario Modificado' : (r.motivo || 'Auditoría')}
+                                </span>
+                                <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                              </div>
+                              <p className="font-bold text-gray-800 text-xs">{r.auditor || 'Auditor'}</p>
+                              <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
+                              <p className="text-[11px] text-gray-600 truncate mt-1 bg-gray-50 p-1.5 rounded">{r.actividad}</p>
+                              <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-teal-600 transition" />
                             </div>
-                            <p className="font-bold text-gray-800 text-xs">{r.auditor || 'Auditor'}</p>
-                            <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
-                            <p className="text-[11px] text-gray-600 truncate mt-1 bg-gray-50 p-1.5 rounded">{r.actividad}</p>
-                            <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-teal-600 transition" />
-                          </div>
-                        ))
+                          ))}
+
+                          {solicitudesCompNotifAdmin.map(s => (
+                            <div
+                              key={`solcomp-${s.id}`}
+                              onClick={() => { setActiveTab('compensaciones'); setShowNotificationsDropdown(false); }}
+                              className="p-3 bg-white hover:bg-teal-50/50 border border-blue-100 rounded-xl shadow-sm transition cursor-pointer relative group"
+                            >
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                                  Solicitud de Compensación
+                                </span>
+                                <span className="text-[10px] text-gray-400">{s.fecha}</span>
+                              </div>
+                              <p className="font-bold text-gray-800 text-xs">{s.auditor || 'Auditor'}</p>
+                              <p className="text-[11px] text-blue-700 font-bold mt-0.5">⏰ Solicita: {formatTime(s.horas_solicitadas_minutos)} hrs</p>
+                              <p className="text-[11px] text-gray-600 truncate mt-1 bg-gray-50 p-1.5 rounded">{s.motivo}</p>
+                              <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-teal-600 transition" />
+                            </div>
+                          ))}
+                        </>
                       ) : (
                         <>
                           {registrosNotif.map(r => (
@@ -1023,13 +1241,13 @@ function DashboardApp({ user, onLogout }) {
                                 className="p-3 bg-white hover:bg-blue-50/50 border border-gray-100 rounded-xl shadow-sm transition cursor-pointer relative group"
                               >
                                 <div className="flex justify-between items-center mb-1">
-                                  <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
-                                    Nueva Compensación Registrada
+                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                                    Compensación Asignada / Registrada
                                   </span>
                                   <span className="text-[10px] text-gray-400">{c.fecha}</span>
                                 </div>
                                 <p className="font-bold text-gray-800 text-xs truncate">Motivo: {c.motivo}</p>
-                                <p className="text-[11px] text-red-600 font-bold mt-0.5">⏰ Descuento: -{formatTime(c.horas_compensadas_minutos)} hrs</p>
+                                <p className="text-[11px] text-red-600 font-bold mt-0.5">⏰ Compensado: -{formatTime(c.horas_compensadas_minutos)} hrs</p>
                                 <ChevronRight size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 group-hover:text-blue-600 transition" />
                               </div>
                             );
@@ -1051,7 +1269,9 @@ function DashboardApp({ user, onLogout }) {
               )}
             </div>
 
-            <button onClick={() => { setEditingId(null); setFormData({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento }); setEvidenciasGuardadas([]); setShowModal(true); }} className="bg-yellow-400 hover:bg-yellow-500 text-teal-900 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition">+ NUEVA PROPUESTA</button>
+            {activeTab === 'dashboard' && !isAdmin && (
+              <button onClick={() => { setEditingId(null); setFormData({ fecha: new Date().toISOString().split('T')[0], hora_inicio: '', hora_termino: '', motivo: 'Auditoría', actividad: '', departamento: user.departamento }); setEvidenciasGuardadas([]); setShowModal(true); }} className="bg-yellow-400 hover:bg-yellow-500 text-teal-900 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition">+ NUEVA PROPUESTA</button>
+            )}
           </div>
         </header>
         <div className="p-6">{renderContent()}</div>
@@ -1196,6 +1416,42 @@ function DashboardApp({ user, onLogout }) {
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowModalComp(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
                 <button type="submit" className="px-3 py-1.5 bg-green-600 text-white rounded font-bold">Registrar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SOLICITAR COMPENSACIÓN (AUDITOR) */}
+      {showModalSolicitudComp && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-4">
+            <h3 className="font-bold text-base text-gray-800">Solicitar Compensación de Horas</h3>
+            <div className={`p-3 rounded-xl border flex items-center justify-between ${obtenerSaldoAuditorSeleccionado(user.id) > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+              <div className="flex items-center gap-2">
+                <Clock size={16} />
+                <span className="font-medium">Tu saldo disponible:</span>
+              </div>
+              <span className="text-sm font-extrabold">{formatTime(obtenerSaldoAuditorSeleccionado(user.id))} hrs</span>
+            </div>
+            <form onSubmit={handleSolicitudCompSubmit} className="space-y-3">
+              <div><label className="font-medium">Fecha solicitada</label><input type="date" required value={solicitudCompData.fecha} onChange={e => setSolicitudCompData({...solicitudCompData, fecha: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
+              <div><label className="font-medium">Tiempo a Solicitar (Ej: 01:30 para 1h 30m)</label><input type="text" placeholder="HH:MM" required value={solicitudCompData.horas} onChange={e => setSolicitudCompData({...solicitudCompData, horas: e.target.value})} className="w-full border rounded p-2 bg-gray-50" /></div>
+              <div>
+                <label className="font-medium">Motivo</label>
+                <select value={solicitudCompData.motivo} onChange={e => setSolicitudCompData({...solicitudCompData, motivo: e.target.value})} className="w-full border rounded p-2 bg-gray-50">
+                  <option value="Salida anticipada">Salida anticipada</option>
+                  <option value="Medio día">Medio día</option>
+                  <option value="Día libre">Día libre</option>
+                </select>
+              </div>
+              <div>
+                <label className="font-medium">Observaciones (Opcional)</label>
+                <input type="text" placeholder="Detalle adicional..." value={solicitudCompData.observaciones} onChange={e => setSolicitudCompData({...solicitudCompData, observaciones: e.target.value})} className="w-full border rounded p-2 bg-gray-50" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowModalSolicitudComp(false)} className="px-3 py-1.5 border rounded">Cancelar</button>
+                <button type="submit" className="px-3 py-1.5 bg-blue-700 text-white rounded font-bold hover:bg-blue-800">Enviar Solicitud</button>
               </div>
             </form>
           </div>
