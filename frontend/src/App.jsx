@@ -35,6 +35,24 @@ const formatTime = (mins) => {
   return `${isNegative ? '-' : ''}${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 };
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return "";
+  const limpio = String(dateStr).split('T')[0].trim();
+  const partes = limpio.split('-');
+  if (partes.length === 3 && partes[0].length === 4) {
+    const [anio, mes, dia] = partes;
+    return `${dia.padStart(2, '0')}-${mes.padStart(2, '0')}-${anio}`;
+  }
+  const fechaObj = new Date(dateStr);
+  if (!isNaN(fechaObj.getTime())) {
+    const dia = String(fechaObj.getDate()).padStart(2, '0');
+    const mes = String(fechaObj.getMonth() + 1).padStart(2, '0');
+    const anio = fechaObj.getFullYear();
+    return `${dia}-${mes}-${anio}`;
+  }
+  return String(dateStr);
+};
+
 const LOGO_URL = "/logo.png";
 
 function LoginScreen({ onLogin }) {
@@ -292,7 +310,7 @@ function DashboardApp({ user, onLogout }) {
   };
 
   const eliminarRegistroFallido = async (r) => {
-      if (!window.confirm(`¿Seguro que deseas eliminar la auditoría "${r.actividad}" del ${r.fecha}? Esta acción eliminará por completo el registro.`)) {
+      if (!window.confirm(`¿Seguro que deseas eliminar la auditoría "${r.actividad}" del ${formatDate(r.fecha)}? Esta acción eliminará por completo el registro.`)) {
         return;
       }
       try {
@@ -393,7 +411,7 @@ function DashboardApp({ user, onLogout }) {
     if (!isAdmin && (editingEstado === 'Aprobado (Pendiente de Ejecución)' || editingEstado === 'Autorizado')) {
       if (fechaAlterada || horarioAlterado || tiempoCambiado) {
         nuevoEstado = 'Revisión por Exceso de Horas';
-        alert(`⚠️ El día o el horario ha sido modificado (${formData.fecha} | ${formData.hora_inicio} - ${formData.hora_termino}). La solicitud se ha enviado a la campanita de notificaciones de la Administradora para su re-autorización.`);
+        alert(`⚠️ El día o el horario ha sido modificado (${formatDate(formData.fecha)} | ${formData.hora_inicio} - ${formData.hora_termino}). La solicitud se ha enviado a la campanita de notificaciones de la Administradora para su re-autorización.`);
       } else if (marcarFinalizado) {
         nuevoEstado = 'Ejecutado';
       }
@@ -477,7 +495,7 @@ function DashboardApp({ user, onLogout }) {
         const cuerpo = encodeURIComponent(
           `Estimado/a ${auditorSeleccionado.nombre},\n\n` +
           `Se ha registrado una compensación (descuento) de horas en el Sistema de Control de Auditorías ASACh con el siguiente detalle:\n\n` +
-          `• Fecha: ${compData.fecha}\n` +
+          `• Fecha: ${formatDate(compData.fecha)}\n` +
           `• Tiempo descontado: ${formatTime(totalMinutos)} hrs (${totalMinutos} minutos)\n` +
           `• Motivo: ${compData.motivo}\n` +
           `• Saldo anterior: ${formatTime(saldoRealMinutos)} hrs\n` +
@@ -563,7 +581,7 @@ function DashboardApp({ user, onLogout }) {
           const cuerpo = encodeURIComponent(
             `Estimado/a ${nombreAuditor},\n\n` +
             `Se ha aprobado y asignado tu solicitud de compensación de horas en el Sistema de Control de Auditorías ASACh con el siguiente detalle:\n\n` +
-            `• Fecha: ${sol.fecha}\n` +
+            `• Fecha: ${formatDate(sol.fecha)}\n` +
             `• Tiempo compensado: ${formatTime(sol.horas_solicitadas_minutos)} hrs (${sol.horas_solicitadas_minutos} minutos)\n` +
             `• Motivo: ${sol.motivo}\n` +
             (sol.observaciones ? `• Observaciones: ${sol.observaciones}\n` : '') +
@@ -894,7 +912,7 @@ function DashboardApp({ user, onLogout }) {
                         ) : (
                           registrosActualesPagina.map(r => (
                               <tr key={r.id} className="border-b hover:bg-gray-50">
-                                  <td className="p-3 whitespace-nowrap">{r.fecha}</td>
+                                  <td className="p-3 whitespace-nowrap">{formatDate(r.fecha)}</td>
                                   {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{r.auditor}</td>}
                                   <td className="p-3">{r.actividad} {Number(r.tiene_evidencia) > 0 && <Paperclip size={13} className="inline text-teal-700 ml-1" title="Posee archivo de evidencia" />}</td>
                                   <td className="p-3 font-bold whitespace-nowrap">{formatTime(r.horas_generadas_minutos)} hrs</td>
@@ -919,7 +937,7 @@ function DashboardApp({ user, onLogout }) {
                                       {isAdmin && (r.estado === 'Pendiente' || r.estado === 'Revisión por Exceso de Horas') && (
                                         <>
                                           <button onClick={() => cambiarEstado(r.id, 'Aprobado (Pendiente de Ejecución)')} className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Aprobar</button>
-                                          <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-blue-200">Rechazar</button>
+                                          <button onClick={() => cambiarEstado(r.id, 'Rechazado')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-[11px] font-medium border border-red-200">Rechazar</button>
                                         </>
                                       )}
                                   </td>
@@ -1013,7 +1031,7 @@ function DashboardApp({ user, onLogout }) {
                   <tbody>
                     {solicitudesPendientesAdmin.map(s => (
                       <tr key={s.id} className="border-b hover:bg-amber-50/40">
-                        <td className="p-3 whitespace-nowrap">{s.fecha}</td>
+                        <td className="p-3 whitespace-nowrap">{formatDate(s.fecha)}</td>
                         <td className="p-3 font-medium whitespace-nowrap">{s.auditor}</td>
                         <td className="p-3">{s.motivo} {s.observaciones ? <span className="text-gray-400">({s.observaciones})</span> : null}</td>
                         <td className="p-3 font-bold text-blue-700 whitespace-nowrap">{formatTime(s.horas_solicitadas_minutos)} hrs</td>
@@ -1048,7 +1066,7 @@ function DashboardApp({ user, onLogout }) {
                   <tbody>
                     {misSolicitudesComp.map(s => (
                       <tr key={s.id} className="border-b hover:bg-gray-50">
-                        <td className="p-3 whitespace-nowrap">{s.fecha}</td>
+                        <td className="p-3 whitespace-nowrap">{formatDate(s.fecha)}</td>
                         <td className="p-3">{s.motivo}</td>
                         <td className="p-3 font-bold text-blue-700 whitespace-nowrap">{formatTime(s.horas_solicitadas_minutos)} hrs</td>
                         <td className="p-3 whitespace-nowrap">
@@ -1081,7 +1099,7 @@ function DashboardApp({ user, onLogout }) {
                   ) : (
                     compensacionesFiltradasTabla.map(c => (
                       <tr key={c.id} className="border-b hover:bg-gray-50">
-                        <td className="p-3 whitespace-nowrap">{c.fecha}</td>
+                        <td className="p-3 whitespace-nowrap">{formatDate(c.fecha)}</td>
                         {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{c.auditor}</td>}
                         <td className="p-3">{c.motivo}</td>
                         <td className="p-3 font-bold text-red-600 whitespace-nowrap">-{formatTime(c.horas_compensadas_minutos).replace('-', '')} hrs ({c.horas_compensadas_minutos || 0} min)</td>
@@ -1201,7 +1219,7 @@ function DashboardApp({ user, onLogout }) {
                                 <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
                                   {r.estado === 'Revisión por Exceso de Horas' ? 'Día / Horario Modificado' : (r.motivo || 'Auditoría')}
                                 </span>
-                                <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                                <span className="text-[10px] text-gray-400">{formatDate(r.fecha)}</span>
                               </div>
                               <p className="font-bold text-gray-800 text-xs">{r.auditor || 'Auditor'}</p>
                               <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
@@ -1220,7 +1238,7 @@ function DashboardApp({ user, onLogout }) {
                                 <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
                                   Solicitud de Compensación
                                 </span>
-                                <span className="text-[10px] text-gray-400">{s.fecha}</span>
+                                <span className="text-[10px] text-gray-400">{formatDate(s.fecha)}</span>
                               </div>
                               <p className="font-bold text-gray-800 text-xs">{s.auditor || 'Auditor'}</p>
                               <p className="text-[11px] text-blue-700 font-bold mt-0.5">⏰ Solicita: {formatTime(s.horas_solicitadas_minutos)} hrs</p>
@@ -1245,7 +1263,7 @@ function DashboardApp({ user, onLogout }) {
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${r.estado === 'Rechazado' ? 'text-red-700 bg-red-50' : 'text-blue-700 bg-blue-50'}`}>
                                   {r.estado === 'Rechazado' ? 'Propuesta Rechazada' : 'Propuesta Aprobada'}
                                 </span>
-                                <span className="text-[10px] text-gray-400">{r.fecha}</span>
+                                <span className="text-[10px] text-gray-400">{formatDate(r.fecha)}</span>
                               </div>
                               <p className="font-bold text-gray-800 text-xs truncate">Actividad: {r.actividad}</p>
                               <p className="text-[11px] text-gray-500 mt-0.5">⏰ Tiempo: {formatTime(r.horas_generadas_minutos)} hrs</p>
@@ -1269,7 +1287,7 @@ function DashboardApp({ user, onLogout }) {
                                   <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                                     Compensación Asignada / Registrada
                                   </span>
-                                  <span className="text-[10px] text-gray-400">{c.fecha}</span>
+                                  <span className="text-[10px] text-gray-400">{formatDate(c.fecha)}</span>
                                 </div>
                                 <p className="font-bold text-gray-800 text-xs truncate">Motivo: {c.motivo}</p>
                                 <p className="text-[11px] text-red-600 font-bold mt-0.5">⏰ Compensado: -{formatTime(c.horas_compensadas_minutos)} hrs</p>
@@ -1488,7 +1506,7 @@ function DashboardApp({ user, onLogout }) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl text-xs space-y-3 max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-base text-gray-800">Detalle del Trabajo Propuesto</h3>
-            <p><strong>Fecha:</strong> {registroDetalle.fecha}</p>
+            <p><strong>Fecha:</strong> {formatDate(registroDetalle.fecha)}</p>
             <p><strong>Auditor:</strong> {registroDetalle.auditor}</p>
             <p><strong>Horario:</strong> {registroDetalle.hora_inicio && registroDetalle.hora_termino ? `${registroDetalle.hora_inicio} - ${registroDetalle.hora_termino}` : 'Sin horario'}</p>
             <p><strong>Tiempo Total:</strong> {formatTime(registroDetalle.horas_generadas_minutos)} hrs ({registroDetalle.horas_generadas_minutos || 0} min)</p>
