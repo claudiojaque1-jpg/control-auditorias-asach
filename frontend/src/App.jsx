@@ -754,14 +754,80 @@ function DashboardApp({ user, onLogout }) {
     return true;
   });
 
-  // Filtrado avanzado para la tabla de Compensaciones (incluyendo filtro por auditor si es admin)
-  const compensacionesFiltradasTabla = rawCompensaciones.filter(c => {
-    if (!isAdmin && String(c.usuario_id) !== String(user.id)) return false;
-    if (isAdmin && compFiltroUsuario !== 'todos' && String(c.usuario_id) !== String(compFiltroUsuario)) return false;
-    if (compFiltroAnio !== 'todos' && (!c.fecha || !c.fecha.startsWith(compFiltroAnio))) return false;
-    if (compFiltroMes !== 'todos' && (!c.fecha || c.fecha.substring(5,7) !== compFiltroMes)) return false;
-    return true;
-  });
+  // Unificación de solicitudes y compensaciones en una sola fila por registro
+  const filasCompensacionesUnificadas = (() => {
+    const compsVisibles = rawCompensaciones.filter(c => isAdmin || String(c.usuario_id) === String(user.id));
+    const solsVisibles = solicitudesCompensacion.filter(s => isAdmin || String(s.usuario_id) === String(user.id));
+    const usadasCompIds = new Set();
+
+    const filasDesdeSolicitudes = solsVisibles.map(s => {
+      const minutosSol = Number(s.horas_solicitadas_minutos || 0);
+      const fechaSolStr = String(s.fecha || '').split('T')[0];
+      const fechaRespRaw = s.fecha_respuesta || s.fecha_asignacion || s.updated_at || '';
+      const fechaRespStr = String(fechaRespRaw).split('T')[0];
+
+      let compEmparejada = null;
+      if (s.estado === 'Aprobada') {
+        compEmparejada = compsVisibles.find(c => {
+          if (usadasCompIds.has(c.id)) return false;
+          const mismaUsuario = String(c.usuario_id) === String(s.usuario_id);
+          const mismosMinutos = Number(c.horas_compensadas_minutos || 0) === minutosSol;
+          const mismaFecha = String(c.fecha || '').split('T')[0] === fechaSolStr || String(c.fecha || '').split('T')[0] === fechaRespStr;
+          return mismaUsuario && mismosMinutos && mismaFecha;
+        }) || compsVisibles.find(c => {
+          if (usadasCompIds.has(c.id)) return false;
+          return String(c.usuario_id) === String(s.usuario_id) && Number(c.horas_compensadas_minutos || 0) === minutosSol;
+        });
+
+        if (compEmparejada) {
+          usadasCompIds.add(compEmparejada.id);
+        }
+      }
+
+      const fechaAsignacion = compEmparejada
+        ? compEmparejada.fecha
+        : (s.estado === 'Pendiente' ? '' : (fechaRespRaw || s.fecha));
+
+      return {
+        key: `sol-${s.id}`,
+        solicitudOriginal: s,
+        usuario_id: s.usuario_id,
+        auditor: s.auditor || 'Auditor',
+        fechaSolicitud: s.fecha,
+        fechaAsignacion,
+        fechaFiltro: fechaAsignacion || s.fecha,
+        motivo: s.motivo,
+        observaciones: s.observaciones,
+        estado: s.estado,
+        minutos: minutosSol,
+        descontada: s.estado === 'Aprobada' || Boolean(compEmparejada)
+      };
+    });
+
+    const filasDesdeCompsDirectas = compsVisibles
+      .filter(c => !usadasCompIds.has(c.id))
+      .map(c => ({
+        key: `comp-${c.id}`,
+        solicitudOriginal: null,
+        usuario_id: c.usuario_id,
+        auditor: c.auditor || 'Auditor',
+        fechaSolicitud: '',
+        fechaAsignacion: c.fecha,
+        fechaFiltro: c.fecha,
+        motivo: c.motivo,
+        observaciones: c.observaciones,
+        estado: 'Asignada',
+        minutos: Number(c.horas_compensadas_minutos || 0),
+        descontada: true
+      }));
+
+    return [...filasDesdeSolicitudes, ...filasDesdeCompsDirectas].filter(item => {
+      if (isAdmin && compFiltroUsuario !== 'todos' && String(item.usuario_id) !== String(compFiltroUsuario)) return false;
+      if (compFiltroAnio !== 'todos' && (!item.fechaFiltro || !item.fechaFiltro.startsWith(compFiltroAnio))) return false;
+      if (compFiltroMes !== 'todos' && (!item.fechaFiltro || item.fechaFiltro.substring(5,7) !== compFiltroMes)) return false;
+      return true;
+    });
+  })();
 
   const leidasSet = new Set(notificacionesLeidas.map(String));
 
@@ -973,8 +1039,7 @@ function DashboardApp({ user, onLogout }) {
     }
 
     if (activeTab === 'compensaciones') {
-      const solicitudesPendientesAdmin = solicitudesCompensacion.filter(s => s.estado === 'Pendiente');
-      const misSolicitudesComp = solicitudesCompensacion.filter(s => String(s.usuario_id) === String(user.id));
+      const mostrarColumnaAccionAdmin = isAdmin && filasCompensacionesUnificadas.some(f => f.estado === 'Pendiente' && f.solicitudOriginal);
 
       return (
         <div className="space-y-4">
@@ -1002,7 +1067,7 @@ function DashboardApp({ user, onLogout }) {
               <h2 className="text-base font-bold text-gray-800">
                 {isAdmin ? 'Historial de Compensaciones' : 'Mi Historial de Compensaciones'}
               </h2>
-              {!isAdmin && <p className="text-gray-400 text-xs">Detalle de horas descontadas de tu saldo disponible ({formatTime(stats.pendientes)} hrs a favor)</p>}
+              {!isAdmin && <p className="text-gray-400 text-xs">Detalle unificado de solicitudes y horas descontadas ({formatTime(stats.pendientes)} hrs a favor)</p>}
             </div>
             {isAdmin ? (
               <button onClick={() => setShowModalComp(true)} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 flex gap-1.5 items-center"><Plus size={16} /> Registrar Compensación</button>
@@ -1011,98 +1076,60 @@ function DashboardApp({ user, onLogout }) {
             )}
           </div>
 
-          {/* SOLICITUDES DE COMPENSACIÓN PENDIENTES (VISTA ADMIN) */}
-          {isAdmin && solicitudesPendientesAdmin.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden text-xs">
-              <div className="p-3 bg-amber-50 border-b border-amber-200 flex justify-between items-center">
-                <h3 className="font-bold text-amber-900">Solicitudes de Compensación Pendientes ({solicitudesPendientesAdmin.length})</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-white border-b text-gray-500">
-                      <th className="p-3 whitespace-nowrap">Fecha</th>
-                      <th className="p-3 whitespace-nowrap">Auditor</th>
-                      <th className="p-3">Motivo</th>
-                      <th className="p-3 whitespace-nowrap">Horas Solicitadas</th>
-                      <th className="p-3 text-center whitespace-nowrap">Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {solicitudesPendientesAdmin.map(s => (
-                      <tr key={s.id} className="border-b hover:bg-amber-50/40">
-                        <td className="p-3 whitespace-nowrap">{formatDate(s.fecha)}</td>
-                        <td className="p-3 font-medium whitespace-nowrap">{s.auditor}</td>
-                        <td className="p-3">{s.motivo} {s.observaciones ? <span className="text-gray-400">({s.observaciones})</span> : null}</td>
-                        <td className="p-3 font-bold text-blue-700 whitespace-nowrap">{formatTime(s.horas_solicitadas_minutos)} hrs</td>
-                        <td className="p-3 flex justify-center gap-2 whitespace-nowrap">
-                          <button onClick={() => aprobarSolicitudCompensacion(s)} className="bg-green-600 text-white px-2.5 py-1 rounded text-[11px] font-bold hover:bg-green-700">Asignar / Aprobar</button>
-                          <button onClick={() => rechazarSolicitudCompensacion(s)} className="bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded text-[11px] font-medium hover:bg-red-100">Rechazar</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* MIS SOLICITUDES DE COMPENSACIÓN (VISTA AUDITOR) */}
-          {!isAdmin && misSolicitudesComp.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
-              <div className="p-3 bg-gray-50 border-b border-gray-100">
-                <h3 className="font-bold text-gray-700">Mis Solicitudes de Compensación</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-white border-b text-gray-500">
-                      <th className="p-3 whitespace-nowrap">Fecha</th>
-                      <th className="p-3">Motivo</th>
-                      <th className="p-3 whitespace-nowrap">Horas Solicitadas</th>
-                      <th className="p-3 whitespace-nowrap">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {misSolicitudesComp.map(s => (
-                      <tr key={s.id} className="border-b hover:bg-gray-50">
-                        <td className="p-3 whitespace-nowrap">{formatDate(s.fecha)}</td>
-                        <td className="p-3">{s.motivo}</td>
-                        <td className="p-3 font-bold text-blue-700 whitespace-nowrap">{formatTime(s.horas_solicitadas_minutos)} hrs</td>
-                        <td className="p-3 whitespace-nowrap">
-                          {s.estado === 'Aprobada' && <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-green-100 text-green-800">Aprobada y Asignada</span>}
-                          {s.estado === 'Rechazada' && <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800">Rechazada</span>}
-                          {s.estado === 'Pendiente' && <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-yellow-100 text-yellow-800">Pendiente</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden text-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-white border-b text-gray-500">
-                    <th className="p-3 whitespace-nowrap">Fecha</th>
+                    <th className="p-3 whitespace-nowrap">Fecha Solicitud</th>
                     {isAdmin && <th className="p-3 whitespace-nowrap">Auditor</th>}
                     <th className="p-3">Motivo</th>
-                    <th className="p-3 whitespace-nowrap">Horas Descontadas</th>
+                    <th className="p-3 whitespace-nowrap">Estado</th>
+                    <th className="p-3 whitespace-nowrap">Fecha Asignación / Respuesta</th>
+                    <th className="p-3 whitespace-nowrap">Horas Compensadas</th>
+                    {mostrarColumnaAccionAdmin && <th className="p-3 text-center whitespace-nowrap">Acción</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {compensacionesFiltradasTabla.length === 0 ? (
-                    <tr><td colSpan="4" className="p-4 text-center text-gray-400">No hay compensaciones registradas para este filtro.</td></tr>
+                  {filasCompensacionesUnificadas.length === 0 ? (
+                    <tr><td colSpan={isAdmin ? (mostrarColumnaAccionAdmin ? "7" : "6") : "5"} className="p-4 text-center text-gray-400">No hay compensaciones registradas para este filtro.</td></tr>
                   ) : (
-                    compensacionesFiltradasTabla.map(c => (
-                      <tr key={c.id} className="border-b hover:bg-gray-50">
-                        <td className="p-3 whitespace-nowrap">{formatDate(c.fecha)}</td>
-                        {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{c.auditor}</td>}
-                        <td className="p-3">{c.motivo}</td>
-                        <td className="p-3 font-bold text-red-600 whitespace-nowrap">-{formatTime(c.horas_compensadas_minutos).replace('-', '')} hrs ({c.horas_compensadas_minutos || 0} min)</td>
+                    filasCompensacionesUnificadas.map(item => (
+                      <tr key={item.key} className="border-b hover:bg-gray-50">
+                        <td className="p-3 whitespace-nowrap">{item.fechaSolicitud ? formatDate(item.fechaSolicitud) : '—'}</td>
+                        {isAdmin && <td className="p-3 font-medium whitespace-nowrap">{item.auditor}</td>}
+                        <td className="p-3">
+                          {item.motivo} {item.observaciones ? <span className="text-gray-400">({item.observaciones})</span> : null}
+                        </td>
+                        <td className="p-3 whitespace-nowrap">
+                          {(item.estado === 'Aprobada' || item.estado === 'Asignada') && (
+                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-green-100 text-green-800">
+                              {item.estado === 'Aprobada' ? 'Aprobada y Asignada' : 'Asignada'}
+                            </span>
+                          )}
+                          {item.estado === 'Rechazada' && (
+                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800">Rechazada</span>
+                          )}
+                          {item.estado === 'Pendiente' && (
+                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-yellow-100 text-yellow-800">Pendiente</span>
+                          )}
+                        </td>
+                        <td className="p-3 whitespace-nowrap">{item.fechaAsignacion ? formatDate(item.fechaAsignacion) : '—'}</td>
+                        <td className={`p-3 font-bold whitespace-nowrap ${item.descontada ? 'text-red-600' : (item.estado === 'Rechazada' ? 'text-gray-400' : 'text-blue-700')}`}>
+                          {item.descontada
+                            ? `-${formatTime(item.minutos).replace('-', '')} hrs (${item.minutos || 0} min)`
+                            : `${formatTime(item.minutos)} hrs (${item.minutos || 0} min)`}
+                        </td>
+                        {mostrarColumnaAccionAdmin && (
+                          <td className="p-3 text-center whitespace-nowrap">
+                            {item.estado === 'Pendiente' && item.solicitudOriginal ? (
+                              <div className="flex justify-center gap-2">
+                                <button onClick={() => aprobarSolicitudCompensacion(item.solicitudOriginal)} className="bg-green-600 text-white px-2.5 py-1 rounded text-[11px] font-bold hover:bg-green-700">Asignar / Aprobar</button>
+                                <button onClick={() => rechazarSolicitudCompensacion(item.solicitudOriginal)} className="bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded text-[11px] font-medium hover:bg-red-100">Rechazar</button>
+                              </div>
+                            ) : '—'}
+                          </td>
+                        )}
                       </tr>
                     ))
                   )}
