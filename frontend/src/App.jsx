@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { LayoutDashboard, Clock, FileText, Users, LogOut, Plus, AlertTriangle, Paperclip, Lock, User, UserPlus, Eye, Edit, CheckCircle, Filter, Bell, ChevronRight, Check, Upload, ExternalLink, ChevronLeft, Trash2 } from 'lucide-react';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 
 const API_URL = "https://control-auditorias-asach-production.up.railway.app";
 
@@ -52,6 +52,43 @@ const formatDate = (dateStr) => {
   }
   return String(dateStr);
 };
+
+// Anillo circular compacto estilo KPI ejecutivo
+function KpiRing({ percent, strokeColor }) {
+  const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+  const radius = 16;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (safePercent / 100) * circumference;
+
+  return (
+    <div className="relative w-11 h-11 flex items-center justify-center shrink-0">
+      <svg className="w-11 h-11 -rotate-90" viewBox="0 0 40 40">
+        <circle
+          cx="20"
+          cy="20"
+          r={radius}
+          fill="none"
+          stroke="#1e293b"
+          strokeWidth="3.5"
+        />
+        <circle
+          cx="20"
+          cy="20"
+          r={radius}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth="3.5"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className="absolute text-[9px] font-bold text-slate-200">
+        {Math.round(safePercent)}%
+      </span>
+    </div>
+  );
+}
 
 const LOGO_URL = "/logo.png";
 
@@ -714,10 +751,12 @@ function DashboardApp({ user, onLogout }) {
 
   const estadoData = [
     { name: 'Ejecutadas', value: cantEjecutadas, color: '#10b981' },
-    { name: 'Pendientes / Modificadas', value: cantPendientes, color: '#f59e0b' },
-    { name: 'Aprobadas (Pend. Ejecución)', value: cantAprobadasPendientes, color: '#3b82f6' },
-    ...(cantRechazadas > 0 ? [{ name: 'Rechazadas', value: cantRechazadas, color: '#ef4444' }] : [])
+    { name: 'Pendientes / Modif.', value: cantPendientes, color: '#f59e0b' },
+    { name: 'Aprob. Pend. Ejec.', value: cantAprobadasPendientes, color: '#38bdf8' },
+    ...(cantRechazadas > 0 ? [{ name: 'Rechazadas', value: cantRechazadas, color: '#f43f5e' }] : [])
   ].filter(d => d.value > 0);
+
+  const totalEstadosCount = estadoData.reduce((acc, item) => acc + item.value, 0);
 
   const auditoresSoloAuditores = usuariosDB.filter(u => u.rol !== 'Administrador');
   const auditoresDataDoble = auditoresSoloAuditores.map(u => {
@@ -854,68 +893,190 @@ function DashboardApp({ user, onLogout }) {
 
   const renderContent = () => {
     if (activeTab === 'dashboard') {
-      return (
-        <div className="space-y-6">
-          {stats.pendientes < 0 && <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded text-xs flex items-center gap-2"><AlertTriangle className="text-red-500" size={16} /><p className="text-red-700 font-medium">Hay <strong>{formatTime(stats.pendientes)} horas de déficit</strong> en el periodo seleccionado.</p></div>}
+      const pctCompensado = stats.generadas > 0 ? (stats.compensadas / stats.generadas) * 100 : (stats.compensadas > 0 ? 100 : 0);
+      const pctSaldo = stats.generadas > 0 ? Math.max(0, (stats.pendientes / stats.generadas) * 100) : 0;
+      const pctEjecutadas = registros.length > 0 ? (cantEjecutadas / registros.length) * 100 : 0;
+      const pctPropuestas = registros.length > 0 ? (cantPendientes / registros.length) * 100 : 0;
+      const pctAuditores = usuariosDB.length > 0 ? (stats.auditores / usuariosDB.length) * 100 : (stats.auditores > 0 ? 100 : 0);
 
-          {/* TARJETAS KPI COMPACTAS */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 border-l-4 border-l-emerald-500 flex flex-col justify-between"><p className="text-gray-400 text-[10px] font-semibold uppercase">Ejecutadas</p><h2 className={`text-xl font-extrabold mt-0.5 ${themeText}`}>{formatTime(stats.generadas)}</h2></div>
-            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 border-l-4 border-l-blue-500 flex flex-col justify-between"><p className="text-gray-400 text-[10px] font-semibold uppercase">Compensadas</p><h2 className="text-xl font-extrabold text-blue-600 mt-0.5">{formatTime(stats.compensadas)}</h2></div>
-            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 border-l-4 border-l-indigo-500 flex flex-col justify-between"><p className="text-gray-400 text-[10px] font-semibold uppercase">Saldo (A favor)</p><h2 className="text-xl font-extrabold text-indigo-600 mt-0.5">{formatTime(stats.pendientes)}</h2></div>
-            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 border-l-4 border-l-amber-500 flex flex-col justify-between"><p className="text-amber-700 text-[10px] font-semibold uppercase">En Propuesta</p><h2 className="text-xl font-extrabold text-amber-500 mt-0.5">{registros.filter(r => r.estado === 'Pendiente').length}</h2></div>
-            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 border-l-4 border-l-gray-400 flex flex-col justify-between"><p className="text-gray-400 text-[10px] font-semibold uppercase">{isAdmin ? "Auditores Activos" : "Mis Registros"}</p><h2 className="text-xl font-extrabold text-gray-700 mt-0.5">{isAdmin ? stats.auditores : registros.length}</h2></div>
+      return (
+        <div className="bg-slate-950 text-slate-100 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-xl space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-violet-400">Executive Telemetry</span>
+              <h3 className="text-sm font-bold text-white">Resumen Operativo y Balance de Horas</h3>
+            </div>
+            <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-900 border border-slate-700/80 text-slate-300 font-medium">
+              Periodo 2026 · {isAdmin ? 'Vista Global' : 'Mi Cuenta'}
+            </span>
           </div>
 
-          {/* GRÁFICOS ORGANIZADOS EN LA PÁGINA PRINCIPAL */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 lg:col-span-2 flex flex-col justify-between">
-              <h3 className="font-bold text-gray-700 text-sm mb-3">Tendencia de Horas Reales (por Mes en Hrs)</h3>
+          {stats.pendientes < 0 && (
+            <div className="bg-rose-950/60 border border-rose-500/40 p-3 rounded-xl text-xs flex items-center gap-2">
+              <AlertTriangle className="text-rose-400 shrink-0" size={16} />
+              <p className="text-rose-200 font-medium">
+                Hay <strong className="text-white">{formatTime(stats.pendientes)} horas de déficit</strong> en el periodo seleccionado.
+              </p>
+            </div>
+          )}
+
+          {/* TARJETAS KPI EJECUTIVAS CON ANILLO CIRCULAR */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+            <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 hover:border-emerald-500/40 transition flex items-center justify-between gap-2">
+              <div>
+                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Ejecutadas</p>
+                <h2 className="text-xl font-extrabold text-emerald-400 mt-1">{formatTime(stats.generadas)}</h2>
+                <span className="text-[10px] text-slate-400">Horas aprobadas</span>
+              </div>
+              <KpiRing percent={pctEjecutadas} strokeColor="#10b981" />
+            </div>
+
+            <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 hover:border-sky-500/40 transition flex items-center justify-between gap-2">
+              <div>
+                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Compensadas</p>
+                <h2 className="text-xl font-extrabold text-sky-400 mt-1">{formatTime(stats.compensadas)}</h2>
+                <span className="text-[10px] text-slate-400">Horas descontadas</span>
+              </div>
+              <KpiRing percent={pctCompensado} strokeColor="#38bdf8" />
+            </div>
+
+            <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 hover:border-violet-500/40 transition flex items-center justify-between gap-2">
+              <div>
+                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Saldo (A favor)</p>
+                <h2 className="text-xl font-extrabold text-violet-400 mt-1">{formatTime(stats.pendientes)}</h2>
+                <span className="text-[10px] text-slate-400">Disponible</span>
+              </div>
+              <KpiRing percent={pctSaldo} strokeColor="#a78bfa" />
+            </div>
+
+            <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 hover:border-amber-500/40 transition flex items-center justify-between gap-2">
+              <div>
+                <p className="text-amber-300/90 text-[10px] font-bold uppercase tracking-wider">En Propuesta</p>
+                <h2 className="text-xl font-extrabold text-amber-400 mt-1">{registros.filter(r => r.estado === 'Pendiente').length}</h2>
+                <span className="text-[10px] text-slate-400">Por autorizar</span>
+              </div>
+              <KpiRing percent={pctPropuestas} strokeColor="#fbbf24" />
+            </div>
+
+            <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 hover:border-fuchsia-500/40 transition flex items-center justify-between gap-2">
+              <div>
+                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">{isAdmin ? "Auditores Activos" : "Mis Registros"}</p>
+                <h2 className="text-xl font-extrabold text-white mt-1">{isAdmin ? stats.auditores : registros.length}</h2>
+                <span className="text-[10px] text-slate-400">{isAdmin ? "Equipo activo" : "Total histórico"}</span>
+              </div>
+              <KpiRing percent={pctAuditores} strokeColor="#c084fc" />
+            </div>
+          </div>
+
+          {/* TRAYECTORIA MENSUAL CON GRADIENTE + DONA CON DATO CENTRAL */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800 lg:col-span-2 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-slate-100 text-xs uppercase tracking-wider">Trayectoria Mensual de Horas (en Hrs)</h3>
+                <span className="text-[10px] text-slate-400">Realizadas vs. Compensadas</span>
+              </div>
               <div className="h-60 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={tendenciaData}>
-                    <XAxis dataKey="mes" stroke="#888888" fontSize={11} />
-                    <YAxis stroke="#888888" fontSize={11} />
-                    <RechartsTooltip formatter={(value) => [`${value} hrs`, '']} />
-                    <Legend />
-                    <Line type="monotone" dataKey="Realizadas" stroke="#059669" strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="Compensadas" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
-                  </LineChart>
+                  <AreaChart data={tendenciaData} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gradRealizadas" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.45} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="gradCompensadas" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.45} />
+                        <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="mes" stroke="#64748b" fontSize={11} tickLine={false} axisLine={{ stroke: '#1e293b' }} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                    <RechartsTooltip
+                      formatter={(value) => [`${value} hrs`, '']}
+                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '10px', color: '#f8fafc', fontSize: '11px' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '11px', color: '#cbd5e1' }} />
+                    <Area type="monotone" dataKey="Realizadas" stroke="#10b981" strokeWidth={2.5} fill="url(#gradRealizadas)" activeDot={{ r: 5 }} />
+                    <Area type="monotone" dataKey="Compensadas" stroke="#38bdf8" strokeWidth={2.5} fill="url(#gradCompensadas)" activeDot={{ r: 5 }} />
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
-              <h3 className="font-bold text-gray-700 text-sm mb-3">Distribución por Estado</h3>
-              <div className="h-60 w-full flex items-center justify-center">
-                {estadoData.length === 0 ? (
-                  <p className="text-gray-400 text-xs">Sin datos registrados</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={estadoData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} fill="#8884d8" label={({ name, value }) => `${name}: ${value}`}>
-                        {estadoData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
-                      </Pie>
-                      <RechartsTooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
+            <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-bold text-slate-100 text-xs uppercase tracking-wider">Distribución por Estado</h3>
+                <span className="text-[10px] text-slate-400">{totalEstadosCount} total</span>
               </div>
+
+              {estadoData.length === 0 ? (
+                <div className="h-60 flex items-center justify-center">
+                  <p className="text-slate-500 text-xs">Sin datos registrados</p>
+                </div>
+              ) : (
+                <div className="flex flex-col justify-between h-60">
+                  <div className="relative h-36 w-full flex items-center justify-center">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={estadoData}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={38}
+                          outerRadius={56}
+                          paddingAngle={3}
+                          stroke="none"
+                        >
+                          {estadoData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '10px', color: '#f8fafc', fontSize: '11px' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-base font-extrabold text-white leading-none">{totalEstadosCount}</span>
+                      <span className="text-[9px] text-slate-400 uppercase mt-0.5">Registros</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-2 border-t border-slate-800/80 text-[11px]">
+                    {estadoData.map((item) => (
+                      <div key={item.name} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-slate-300">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                          <span className="truncate">{item.name}</span>
+                        </div>
+                        <span className="font-bold text-white">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
           {isAdmin && (
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-              <h3 className="font-bold text-gray-700 text-sm mb-3">Comparativa por Auditor: Horas Aprobadas vs Compensadas (en Hrs)</h3>
+            <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-800">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-slate-100 text-xs uppercase tracking-wider">Comparativa por Auditor: Horas Aprobadas vs Compensadas (en Hrs)</h3>
+                <span className="text-[10px] text-slate-400">Balance acumulado</span>
+              </div>
               <div className="h-60 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={auditoresDataDoble}>
-                    <XAxis dataKey="nombre" stroke="#888888" fontSize={11} />
-                    <YAxis stroke="#888888" fontSize={11} />
-                    <RechartsTooltip formatter={(value) => [`${value} hrs`, '']} />
-                    <Legend />
-                    <Bar dataKey="Aprobadas" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Compensadas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  <BarChart data={auditoresDataDoble} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+                    <XAxis dataKey="nombre" stroke="#64748b" fontSize={11} tickLine={false} axisLine={{ stroke: '#1e293b' }} />
+                    <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                    <RechartsTooltip
+                      formatter={(value) => [`${value} hrs`, '']}
+                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '10px', color: '#f8fafc', fontSize: '11px' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '11px', color: '#cbd5e1' }} />
+                    <Bar dataKey="Aprobadas" fill="#10b981" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="Compensadas" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
